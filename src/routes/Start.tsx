@@ -1,8 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { DataSyncService } from '../services/dataSync';
 
 export default function Start() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [lengthSec, setLengthSec] = useState<30 | 60 | 120>(60);
   const [ops, setOps] = useState<{ [k: string]: boolean }>({
     addition: true,
@@ -20,23 +23,54 @@ export default function Start() {
   });
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('ops');
-      if (saved) setOps(JSON.parse(saved));
-      const savedDigits = localStorage.getItem('digits');
-      if (savedDigits) setDigits(JSON.parse(savedDigits));
-    } catch {}
-  }, []);
+    const loadSettings = async () => {
+      try {
+        // If user is logged in, try to load from Firestore first
+        if (user) {
+          const dataSync = DataSyncService.getInstance();
+          const firestoreSettings = await dataSync.getUserSettings(user);
+          
+          if (firestoreSettings) {
+            setOps(firestoreSettings.ops);
+            setDigits(firestoreSettings.digits);
+            setLengthSec(firestoreSettings.lengthSec);
+            return;
+          }
+        }
+        
+        // Fallback to localStorage
+        const saved = localStorage.getItem('ops');
+        if (saved) setOps(JSON.parse(saved));
+        const savedDigits = localStorage.getItem('digits');
+        if (savedDigits) setDigits(JSON.parse(savedDigits));
+        const savedLength = localStorage.getItem('lengthSec');
+        if (savedLength) setLengthSec(Number(savedLength) as 30 | 60 | 120);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    };
 
-  function start() {
+    loadSettings();
+  }, [user]);
+
+  const start = async () => {
     try {
+      // Save to localStorage
       localStorage.setItem('lengthSec', String(lengthSec));
       localStorage.setItem('ops', JSON.stringify(ops));
       localStorage.setItem('digits', JSON.stringify(digits));
       localStorage.setItem('lastSettings', JSON.stringify({ lengthSec, ops, digits }));
-    } catch {}
+      
+      // If user is logged in, also save to Firestore
+      if (user) {
+        const dataSync = DataSyncService.getInstance();
+        await dataSync.syncUserSettings(user, { lengthSec, ops, digits });
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    }
     navigate('/practice');
-  }
+  };
 
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 24, maxWidth: 720, margin: '0 auto' }}>

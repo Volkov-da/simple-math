@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [react()],
-    base: '/simple-math/',
+    // Firebase Hosting serves from root, no base path needed
 });

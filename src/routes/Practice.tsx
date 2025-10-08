@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { DataSyncService } from '../services/dataSync';
 
 type Skill = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'percent';
 
@@ -120,6 +122,7 @@ function generateEasyItem(): Item {
 
 export default function Practice() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [lengthSec] = useState<number>(() => {
     const saved = Number(localStorage.getItem('lengthSec'));
     return saved === 30 || saved === 60 || saved === 120 ? saved : 60;
@@ -138,7 +141,7 @@ export default function Practice() {
   const endedRef = useRef<boolean>(false);
   const intervalIdRef = useRef<number | null>(null);
 
-  function endSession(reason: 'timeout' | 'exit') {
+  const endSession = async (reason: 'timeout' | 'exit') => {
     if (endedRef.current) return;
     endedRef.current = true;
     if (intervalIdRef.current != null) {
@@ -158,7 +161,9 @@ export default function Practice() {
       totals: { attempted: attemptedSafe, correct: correctSafe, accuracyPct: accuracy, avgTimeMs: avgTime },
       perSkill: {} as any,
     };
+    
     try {
+      // Save to localStorage
       localStorage.setItem('lastSummary', JSON.stringify(summary));
       const historyRaw = localStorage.getItem('summaries');
       const history = historyRaw ? (JSON.parse(historyRaw) as any[]) : [];
@@ -169,9 +174,18 @@ export default function Practice() {
       }
       const deduped = Object.values(uniqueById).slice(0, 10);
       localStorage.setItem('summaries', JSON.stringify(deduped));
-    } catch {}
+      
+      // If user is logged in, also save to Firestore
+      if (user) {
+        const dataSync = DataSyncService.getInstance();
+        await dataSync.saveSessionSummary(user, summary);
+      }
+    } catch (error) {
+      console.error('Error saving session summary:', error);
+    }
+    
     navigate(`/summary/${summary.id}`);
-  }
+  };
 
   useEffect(() => {
     inputRef.current?.focus();
