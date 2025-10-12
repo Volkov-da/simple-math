@@ -44,12 +44,18 @@ export default function Statistics() {
         // Calculate overall statistics
         if (localSessions.length > 0) {
           const totalSessions = localSessions.length;
-          const totalAttempted = localSessions.reduce((sum: number, s: SessionSummary) => sum + s.totals.attempted, 0);
-          const totalCorrect = localSessions.reduce((sum: number, s: SessionSummary) => sum + s.totals.correct, 0);
+          const totalAttempted = localSessions.reduce((sum: number, s: SessionSummary) => sum + (s.totals.attempted || 0), 0);
+          const totalCorrect = localSessions.reduce((sum: number, s: SessionSummary) => sum + (s.totals.correct || 0), 0);
           const averageAccuracy = totalAttempted > 0 ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
-          const bestStreak = Math.max(...localSessions.map((s: SessionSummary) => s.totals.maxStreak));
+          
+          // Robust bestStreak calculation
+          const validStreaks = localSessions
+            .map((s: SessionSummary) => s.totals.maxStreak)
+            .filter((streak: number) => typeof streak === 'number' && !isNaN(streak) && streak >= 0);
+          const bestStreak = validStreaks.length > 0 ? Math.max(...validStreaks) : 0;
+          
           const averageTimePerTask = totalAttempted > 0 
-            ? Math.round(localSessions.reduce((sum: number, s: SessionSummary) => sum + (s.totals.avgTimeMs * s.totals.attempted), 0) / totalAttempted) 
+            ? Math.round(localSessions.reduce((sum: number, s: SessionSummary) => sum + ((s.totals.avgTimeMs || 0) * (s.totals.attempted || 0)), 0) / totalAttempted) 
             : 0;
 
           setStats({
@@ -141,9 +147,9 @@ export default function Statistics() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <span style={{ fontWeight: 'bold' }}>{s.totals.correct}/{s.totals.attempted}</span> ({s.totals.accuracyPct}%) — 
-                      Avg: <strong>{(s.totals.avgTimeMs / 1000).toFixed(1)}s</strong> per task
+                      Avg: <strong>{typeof s.totals.avgTimeMs === 'number' && !isNaN(s.totals.avgTimeMs) ? (s.totals.avgTimeMs / 1000).toFixed(1) : '0.0'}s</strong> per task
                     </div>
-                    {s.totals.maxStreak > 0 && (
+                    {s.totals.maxStreak > 0 && typeof s.totals.maxStreak === 'number' && !isNaN(s.totals.maxStreak) && (
                       <div style={{ fontSize: '14px', color: '#f59e0b' }}>
                         🔥 Best: {s.totals.maxStreak}
                       </div>
