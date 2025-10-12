@@ -66,7 +66,8 @@ export default function Summary() {
           <div>Attempted: <strong>{summary.totals.attempted}</strong></div>
           <div>Correct: <strong>{summary.totals.correct}</strong></div>
           <div>Accuracy: <strong>{summary.totals.accuracyPct}%</strong></div>
-          <div>Avg time/item: <strong>{summary.totals.avgTimeMs} ms</strong></div>
+          <div>Avg time/item: <strong>{(summary.totals.avgTimeMs / 1000).toFixed(1)}s</strong></div>
+          <div>Date: <strong>{new Date(summary.startedAt).toLocaleDateString()}</strong></div>
           {summary.totals.maxStreak > 0 && (
             <div style={{ marginTop: 8, padding: '8px 12px', backgroundColor: '#f0f9ff', borderRadius: '6px', border: '1px solid #e0f2fe' }}>
               <div style={{ color: '#0369a1', fontWeight: 'bold', marginBottom: '4px' }}>🔥 Streak Stats</div>
@@ -85,7 +86,8 @@ export default function Summary() {
         <ul>
           {recentSessions.map((s) => (
             <li key={s.id} style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-              <div>{new Date(s.startedAt).toLocaleTimeString()} — {s.totals.correct}/{s.totals.attempted} ({s.totals.accuracyPct}%)</div>
+              <div><strong>{new Date(s.startedAt).toLocaleDateString()}</strong> — {new Date(s.startedAt).toLocaleTimeString()}</div>
+              <div>{s.totals.correct}/{s.totals.attempted} ({s.totals.accuracyPct}%) — Avg: {(s.totals.avgTimeMs / 1000).toFixed(1)}s per task</div>
               {s.totals.maxStreak > 0 && (
                 <div style={{ fontSize: '14px', color: '#666', marginTop: '2px' }}>
                   🔥 Best streak: {s.totals.maxStreak}
@@ -95,8 +97,29 @@ export default function Summary() {
           ))}
         </ul>
       </div>
-      <div style={{ marginTop: 24 }}>
-        <Link to="/">Play again</Link>
+      <div style={{ marginTop: 24, display: 'flex', gap: '16px' }}>
+        <Link to="/" style={{ 
+          display: 'inline-block', 
+          padding: '12px 24px', 
+          backgroundColor: '#10b981', 
+          color: 'white', 
+          textDecoration: 'none', 
+          borderRadius: '6px',
+          fontWeight: 'bold'
+        }}>
+          Play Again
+        </Link>
+        <Link to="/statistics" style={{ 
+          display: 'inline-block', 
+          padding: '12px 24px', 
+          backgroundColor: '#f8f9fa', 
+          color: '#666', 
+          textDecoration: 'none', 
+          borderRadius: '6px',
+          border: '1px solid #dee2e6'
+        }}>
+          View Statistics
+        </Link>
       </div>
     </div>
   );

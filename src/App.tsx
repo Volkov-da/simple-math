@@ -2,6 +2,8 @@ import { Link, Route, Routes } from 'react-router-dom';
 import Start from './routes/Start';
 import Practice from './routes/Practice';
 import Summary from './routes/Summary';
+import Settings from './routes/Settings';
+import Statistics from './routes/Statistics';
 
 export default function App() {
   return (
@@ -23,7 +25,8 @@ export default function App() {
           <Route path="/" element={<Start />} />
           <Route path="/practice" element={<Practice />} />
           <Route path="/summary/:sessionId" element={<Summary />} />
-          <Route path="*" element={<div style={{ padding: 24 }}><Link to="/">Back to start</Link></div>} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/statistics" element={<Statistics />} />
         </Routes>
       </main>
     </div>
