@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/authbutton.tsx","./src/contexts/authcontext.tsx","./src/firebase/config.ts","./src/routes/practice.tsx","./src/routes/start.tsx","./src/routes/summary.tsx","./src/services/datasync.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/routes/practice.tsx","./src/routes/start.tsx","./src/routes/summary.tsx"],"version":"5.9.3"}

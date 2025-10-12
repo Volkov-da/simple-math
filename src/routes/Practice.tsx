@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { DataSyncService } from '../services/dataSync';
 
 type Skill = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'percent';
 
@@ -31,6 +29,27 @@ function gcd(a: number, b: number): number {
   return x;
 }
 
+// Helper functions to check for trivial cases
+function isTrivialAddition(a: number, b: number): boolean {
+  return a === 0 || b === 0 || a === 1 || b === 1;
+}
+
+function isTrivialSubtraction(a: number, b: number): boolean {
+  return b === 0 || a === 0 || (a - b) === 1;
+}
+
+function isTrivialMultiplication(a: number, b: number): boolean {
+  return a === 0 || b === 0 || a === 1 || b === 1;
+}
+
+function isTrivialDivision(a: number, b: number): boolean {
+  return b === 1 || a === 0 || a === b || (a % b !== 0 && a < b);
+}
+
+function isTrivialPercent(x: number, y: number): boolean {
+  return x === 0 || y === 0 || x === 100 || y === 1;
+}
+
 function generateEasyItem(): Item {
   const savedOpsRaw = localStorage.getItem('ops');
   const enabled = savedOpsRaw ? (JSON.parse(savedOpsRaw) as Record<string, boolean>) : null;
@@ -54,19 +73,37 @@ function generateEasyItem(): Item {
   const minForDigits = (d: number) => (d <= 1 ? 0 : Math.pow(10, d - 1));
   const maxForDigits = (d: number) => (d <= 1 ? 9 : Math.pow(10, d) - 1);
   if (skill === 'addition') {
-    const a = randInt(minForDigits(dAdd), maxForDigits(dAdd));
-    const b = randInt(minForDigits(dAdd), maxForDigits(dAdd));
+    let a, b;
+    let attempts = 0;
+    do {
+      a = randInt(minForDigits(dAdd), maxForDigits(dAdd));
+      b = randInt(minForDigits(dAdd), maxForDigits(dAdd));
+      attempts++;
+    } while (isTrivialAddition(a, b) && attempts < 20);
+    
     return { id: crypto.randomUUID(), skill, operator: '+', operands: [a, b], correctAnswer: String(a + b), promptText: `${a} + ${b} = ?` };
   }
   if (skill === 'subtraction') {
-    let a = randInt(minForDigits(dSub), maxForDigits(dSub));
-    let b = randInt(minForDigits(dSub), maxForDigits(dSub));
-    if (b > a) [a, b] = [b, a];
+    let a, b;
+    let attempts = 0;
+    do {
+      a = randInt(minForDigits(dSub), maxForDigits(dSub));
+      b = randInt(minForDigits(dSub), maxForDigits(dSub));
+      if (b > a) [a, b] = [b, a];
+      attempts++;
+    } while (isTrivialSubtraction(a, b) && attempts < 20);
+    
     return { id: crypto.randomUUID(), skill, operator: '-', operands: [a, b], correctAnswer: String(a - b), promptText: `${a} - ${b} = ?` };
   }
   if (skill === 'multiplication') {
-    const a = randInt(minForDigits(dMul), maxForDigits(dMul));
-    const b = randInt(minForDigits(dMul), maxForDigits(dMul));
+    let a, b;
+    let attempts = 0;
+    do {
+      a = randInt(minForDigits(dMul), maxForDigits(dMul));
+      b = randInt(minForDigits(dMul), maxForDigits(dMul));
+      attempts++;
+    } while (isTrivialMultiplication(a, b) && attempts < 20);
+    
     return { id: crypto.randomUUID(), skill, operator: '*', operands: [a, b], correctAnswer: String(a * b), promptText: `${a} × ${b} = ?` };
   }
   if (skill === 'division') {
@@ -74,16 +111,34 @@ function generateEasyItem(): Item {
     const maxTries = 20;
     let a = 0;
     let b = 1;
+    let attempts = 0;
+    
     for (let i = 0; i < maxTries; i++) {
       b = randInt(Math.max(1, minForDigits(dDiv)), maxForDigits(dDiv));
       const k = randInt(1, 9);
       const candidate = b * k;
       if (String(candidate).length === String(maxForDigits(dDiv)).length || dDiv === 1) {
         a = candidate;
-        break;
+        if (!isTrivialDivision(a, b)) {
+          break;
+        }
       }
       a = candidate; // fallback uses last candidate even if digits differ
+      attempts++;
     }
+    
+    // If we still have a trivial case after maxTries, try a few more attempts with different approach
+    if (isTrivialDivision(a, b) && attempts < 15) {
+      for (let i = 0; i < 5; i++) {
+        b = randInt(Math.max(2, minForDigits(dDiv)), maxForDigits(dDiv));
+        const k = randInt(2, 8);
+        a = b * k;
+        if (!isTrivialDivision(a, b)) {
+          break;
+        }
+      }
+    }
+    
     return { id: crypto.randomUUID(), skill, operator: '/', operands: [a, b], correctAnswer: String(a / b), promptText: `${a} ÷ ${b} = ?` };
   }
   // percent-of (integer-only using user's rule, excluding 0% and 100%)
@@ -102,8 +157,24 @@ function generateEasyItem(): Item {
     const k = randInt(1, maxK - 1); // ensures x != 0 and x != 100
     y = candidateY;
     x = Step * k;
-    break;
+    
+    // Check if this percentage calculation is trivial
+    if (!isTrivialPercent(x, y)) {
+      break;
+    }
   }
+  
+  // If we still have a trivial case, try a different approach
+  if (isTrivialPercent(x, y) && attempts < 50) {
+    for (let i = 0; i < 10; i++) {
+      y = randInt(Math.max(2, minForDigits(dPct)), maxForDigits(dPct));
+      x = randInt(10, 90); // Avoid 0%, 100%, and very simple percentages
+      if (!isTrivialPercent(x, y)) {
+        break;
+      }
+    }
+  }
+  
   if (y === 0 || x === 0) {
     // Fallback safe case
     y = 200;
@@ -122,7 +193,6 @@ function generateEasyItem(): Item {
 
 export default function Practice() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [lengthSec] = useState<number>(() => {
     const saved = Number(localStorage.getItem('lengthSec'));
     return saved === 30 || saved === 60 || saved === 120 ? saved : 60;
@@ -137,11 +207,13 @@ export default function Practice() {
   const [attempted, setAttempted] = useState<number>(0);
   const [correctCount, setCorrectCount] = useState<number>(0);
   const [sumTimeMs, setSumTimeMs] = useState<number>(0);
+  const [currentStreak, setCurrentStreak] = useState<number>(0);
+  const [maxStreak, setMaxStreak] = useState<number>(0);
   const lastSubmitAt = useRef<number>(Date.now());
   const endedRef = useRef<boolean>(false);
   const intervalIdRef = useRef<number | null>(null);
 
-  const endSession = async (reason: 'timeout' | 'exit') => {
+  const endSession = (reason: 'timeout' | 'exit') => {
     if (endedRef.current) return;
     endedRef.current = true;
     if (intervalIdRef.current != null) {
@@ -158,7 +230,14 @@ export default function Practice() {
       startedAt: new Date(startedAt).toISOString(),
       endedAt: new Date(endedAt).toISOString(),
       settings: { skills: ['addition','subtraction','multiplication','division','percent'], difficulty: 'easy', lengthSec: lengthSec as 30|60|120, seed: reason },
-      totals: { attempted: attemptedSafe, correct: correctSafe, accuracyPct: accuracy, avgTimeMs: avgTime },
+      totals: { 
+        attempted: attemptedSafe, 
+        correct: correctSafe, 
+        accuracyPct: accuracy, 
+        avgTimeMs: avgTime,
+        maxStreak: maxStreak,
+        finalStreak: currentStreak
+      },
       perSkill: {} as any,
     };
     
@@ -174,12 +253,6 @@ export default function Practice() {
       }
       const deduped = Object.values(uniqueById).slice(0, 10);
       localStorage.setItem('summaries', JSON.stringify(deduped));
-      
-      // If user is logged in, also save to Firestore
-      if (user) {
-        const dataSync = DataSyncService.getInstance();
-        await dataSync.saveSessionSummary(user, summary);
-      }
     } catch (error) {
       console.error('Error saving session summary:', error);
     }
@@ -209,7 +282,18 @@ export default function Practice() {
     lastSubmitAt.current = now;
     const isCorrect = answer.trim() === currentItem.correctAnswer;
     setAttempted(a => a + 1);
-    if (isCorrect) setCorrectCount(c => c + 1);
+    
+    if (isCorrect) {
+      setCorrectCount(c => c + 1);
+      setCurrentStreak(s => {
+        const newStreak = s + 1;
+        setMaxStreak(m => Math.max(m, newStreak));
+        return newStreak;
+      });
+    } else {
+      setCurrentStreak(0);
+    }
+    
     setSumTimeMs(ms => ms + elapsed);
     setFlash(isCorrect ? 'correct' : 'incorrect');
     const next = () => {
@@ -253,6 +337,11 @@ export default function Practice() {
         <div>Time: <strong>{timeLeft}s</strong></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div>Score: <strong>{correctCount}/{attempted}</strong></div>
+          {currentStreak > 0 && (
+            <div style={{ color: '#10b981', fontWeight: 'bold' }}>
+              🔥 {currentStreak}
+            </div>
+          )}
           <button onClick={() => endSession('exit')} style={{ padding: '6px 10px', fontSize: 14 }}>Exit</button>
         </div>
       </div>
