@@ -19,6 +19,32 @@ export default function Start() {
   }, []);
 
   const start = () => {
+    // Ensure default settings are saved if they don't exist
+    try {
+      if (!localStorage.getItem('ops')) {
+        localStorage.setItem('ops', JSON.stringify({
+          addition: true,
+          subtraction: true,
+          multiplication: true,
+          division: true,
+          percent: true,
+        }));
+      }
+      if (!localStorage.getItem('digits')) {
+        localStorage.setItem('digits', JSON.stringify({
+          addition: 2,
+          subtraction: 2,
+          multiplication: 1,
+          division: 1,
+          percent: 2,
+        }));
+      }
+      if (!localStorage.getItem('lengthSec')) {
+        localStorage.setItem('lengthSec', String(lengthSec));
+      }
+    } catch (error) {
+      console.error('Error saving default settings:', error);
+    }
     navigate('/practice');
   };
 

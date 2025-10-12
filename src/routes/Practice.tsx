@@ -52,7 +52,13 @@ function isTrivialPercent(x: number, y: number): boolean {
 
 function generateEasyItem(): Item {
   const savedOpsRaw = localStorage.getItem('ops');
-  const enabled = savedOpsRaw ? (JSON.parse(savedOpsRaw) as Record<string, boolean>) : null;
+  const enabled = savedOpsRaw ? (JSON.parse(savedOpsRaw) as Record<string, boolean>) : {
+    addition: true,
+    subtraction: true,
+    multiplication: true,
+    division: true,
+    percent: true,
+  };
   const savedDigitsRaw = localStorage.getItem('digits');
   const digits = savedDigitsRaw ? (JSON.parse(savedDigitsRaw) as Record<string, number>) : {
     addition: 2,
@@ -61,7 +67,7 @@ function generateEasyItem(): Item {
     division: 1,
     percent: 2,
   };
-  const pool: Skill[] = (['addition','subtraction','multiplication','division','percent'] as Skill[]).filter(s => !enabled || enabled[s]);
+  const pool: Skill[] = (['addition','subtraction','multiplication','division','percent'] as Skill[]).filter(s => enabled[s]);
   const skillIndex = randInt(0, Math.max(0, pool.length - 1));
   const skill: Skill = pool[skillIndex] ?? 'addition';
   const dAdd = Math.max(1, Math.min(4, digits['addition'] ?? 2));
