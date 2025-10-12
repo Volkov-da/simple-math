@@ -29,5 +29,3 @@ export default function App() {
     </div>
   );
 }
-
-// cleaned duplicate template
