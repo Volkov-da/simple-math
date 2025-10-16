@@ -1,9 +1,22 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { BarChart3, Settings, Play, Target, Trophy, Clock, Star } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
+import { useSound } from '../contexts/SoundContext';
+import { AnimatedCounter } from '../components/AnimatedCounter';
 
 export default function Start() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const { playSound } = useSound();
   const [lengthSec, setLengthSec] = useState<30 | 60 | 120>(60);
+  const [stats, setStats] = useState({
+    totalSessions: 0,
+    totalCorrect: 0,
+    bestStreak: 0,
+    todaySessions: 0
+  });
 
   useEffect(() => {
     const loadSettings = () => {
@@ -15,10 +28,36 @@ export default function Start() {
       }
     };
 
+    const loadStats = () => {
+      try {
+        const sessions = JSON.parse(localStorage.getItem('summaries') || '[]');
+        const today = new Date().toDateString();
+        
+        const todaySessions = sessions.filter((s: any) => 
+          new Date(s.startedAt).toDateString() === today
+        ).length;
+
+        const totalCorrect = sessions.reduce((sum: number, s: any) => sum + (s.totals.correct || 0), 0);
+        const bestStreak = Math.max(...sessions.map((s: any) => s.totals.maxStreak || 0), 0);
+
+        setStats({
+          totalSessions: sessions.length,
+          totalCorrect,
+          bestStreak,
+          todaySessions
+        });
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    };
+
     loadSettings();
+    loadStats();
   }, []);
 
-  const start = () => {
+  const start = async () => {
+    await playSound('click');
+    
     // Ensure default settings are saved if they don't exist
     try {
       if (!localStorage.getItem('ops')) {
@@ -48,56 +87,173 @@ export default function Start() {
     navigate('/practice');
   };
 
+  const quickStart = async (duration: 30 | 60 | 120) => {
+    setLengthSec(duration);
+    await playSound('click');
+    setTimeout(() => start(), 100);
+  };
+
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 24, maxWidth: 720, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ margin: 0 }}>Math Practice</h1>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <Link 
-            to="/statistics" 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              textDecoration: 'none', 
-              color: '#666',
-              padding: '8px',
-              borderRadius: '6px',
-              border: '1px solid #dee2e6',
-              backgroundColor: '#f8f9fa'
-            }}
-            title="Statistics"
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <motion.div 
+          className="flex justify-between items-center mb-8"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Math Practice</h1>
+            <p className="text-gray-600">Master arithmetic with timed practice sessions</p>
+          </div>
+          <div className="flex gap-3">
+            <Link 
+              to="/goals" 
+              className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
+              title="Goals & Challenges"
+            >
+              <Star size={20} />
+            </Link>
+            <Link 
+              to="/statistics" 
+              className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
+              title="Statistics"
+            >
+              <BarChart3 size={20} />
+            </Link>
+            <Link 
+              to="/settings" 
+              className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
+              title="Settings"
+            >
+              <Settings size={20} />
+            </Link>
+          </div>
+        </motion.div>
+
+        {/* Stats Dashboard */}
+        {stats.totalSessions > 0 && (
+          <motion.div 
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18"/>
-              <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
-            </svg>
-          </Link>
-          <Link 
-            to="/settings" 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              textDecoration: 'none', 
-              color: '#666',
-              padding: '8px',
-              borderRadius: '6px',
-              border: '1px solid #dee2e6',
-              backgroundColor: '#f8f9fa'
-            }}
-            title="Settings"
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Trophy className="text-yellow-500" size={20} />
+                <span className="text-sm font-medium text-gray-600">Sessions</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900">
+                <AnimatedCounter value={stats.totalSessions} />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Target className="text-green-500" size={20} />
+                <span className="text-sm font-medium text-gray-600">Correct</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900">
+                <AnimatedCounter value={stats.totalCorrect} />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-yellow-500">🔥</span>
+                <span className="text-sm font-medium text-gray-600">Best Streak</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900">
+                <AnimatedCounter value={stats.bestStreak} />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="text-blue-500" size={20} />
+                <span className="text-sm font-medium text-gray-600">Today</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900">
+                <AnimatedCounter value={stats.todaySessions} />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Main Action */}
+        <motion.div 
+          className="text-center mb-8"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-200 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Ready to Practice?</h2>
+            <p className="text-gray-600 mb-6">Choose your session length and start improving your math skills!</p>
+            
+            <motion.button
+              onClick={start}
+              className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Play className="inline mr-2" size={24} />
+              Start Practice
+            </motion.button>
+          </div>
+        </motion.div>
+
+        {/* Quick Start Options */}
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
+          <motion.button
+            onClick={() => quickStart(30)}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-left group"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </Link>
-        </div>
-      </div>
-      <p>Quick timed arithmetic practice. Keyboard only, instant feedback.</p>
-      <div style={{ marginTop: 24, textAlign: 'center' }}>
-        <button onClick={start} style={{ fontSize: 24, padding: '16px 32px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-          Start Practice
-        </button>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Clock className="text-blue-600" size={20} />
+              </div>
+              <span className="font-semibold text-gray-900">Quick Practice</span>
+            </div>
+            <p className="text-sm text-gray-600">30 seconds</p>
+          </motion.button>
+
+          <motion.button
+            onClick={() => quickStart(60)}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-left group border-green-200 bg-green-50"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <Play className="text-green-600" size={20} />
+              </div>
+              <span className="font-semibold text-gray-900">Standard Practice</span>
+            </div>
+            <p className="text-sm text-gray-600">60 seconds (Recommended)</p>
+          </motion.button>
+
+          <motion.button
+            onClick={() => quickStart(120)}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-left group"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Target className="text-purple-600" size={20} />
+              </div>
+              <span className="font-semibold text-gray-900">Extended Practice</span>
+            </div>
+            <p className="text-sm text-gray-600">120 seconds</p>
+          </motion.button>
+        </motion.div>
       </div>
     </div>
   );

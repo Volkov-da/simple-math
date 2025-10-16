@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, Pause, RotateCcw, Target, Clock, Zap } from 'lucide-react';
+import { useSound } from '../contexts/SoundContext';
+import { getEncouragementMessage } from '../utils/encouragement';
+import { ConfettiBurst } from '../components/Confetti';
+import { TimerRing } from '../components/ProgressRing';
+import { fadeIn, slideUp, scaleIn, bounceIn, shake, glow, streakGlow } from '../utils/animations';
 
 type Skill = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'percent';
 
@@ -199,6 +206,7 @@ function generateEasyItem(): Item {
 
 export default function Practice() {
   const navigate = useNavigate();
+  const { playSound } = useSound();
   const [lengthSec] = useState<number>(() => {
     const saved = Number(localStorage.getItem('lengthSec'));
     return saved === 30 || saved === 60 || saved === 120 ? saved : 60;
@@ -207,6 +215,9 @@ export default function Practice() {
   const [currentItem, setCurrentItem] = useState<Item>(() => generateEasyItem());
   const [answer, setAnswer] = useState<string>('');
   const [flash, setFlash] = useState<'correct' | 'incorrect' | null>(null);
+  const [encouragementMessage, setEncouragementMessage] = useState<string>('');
+  const [showConfetti, setShowConfetti] = useState<number>(0);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const startedAt = useMemo(() => Date.now(), []);
 
@@ -269,45 +280,80 @@ export default function Practice() {
   useEffect(() => {
     inputRef.current?.focus();
     const iv = window.setInterval(() => {
-      setTimeLeft(t => {
-        if (t <= 1) {
-          window.clearInterval(iv);
-          if (endedRef.current) return 0;
-          endSession('timeout');
-        }
-        return t - 1;
-      });
+      if (!isPaused) {
+        setTimeLeft(t => {
+          if (t <= 1) {
+            window.clearInterval(iv);
+            if (endedRef.current) return 0;
+            endSession('timeout');
+          }
+          return t - 1;
+        });
+      }
     }, 1000);
     intervalIdRef.current = iv;
     return () => window.clearInterval(iv);
-  }, [attempted, correctCount, sumTimeMs, lengthSec, navigate, startedAt]);
+  }, [attempted, correctCount, sumTimeMs, lengthSec, navigate, startedAt, isPaused]);
 
-  function submit() {
+  const togglePause = async () => {
+    setIsPaused(!isPaused);
+    await playSound('click');
+  };
+
+  async function submit() {
     const now = Date.now();
     const elapsed = now - lastSubmitAt.current;
     lastSubmitAt.current = now;
     const isCorrect = answer.trim() === currentItem.correctAnswer;
     setAttempted(a => a + 1);
     
+    // Play sound effects
+    if (isCorrect) {
+      await playSound('correct');
+    } else {
+      await playSound('incorrect');
+    }
+    
     if (isCorrect) {
       setCorrectCount(c => c + 1);
-      setCurrentStreak(s => {
-        const newStreak = s + 1;
-        setMaxStreak(m => Math.max(m, newStreak));
-        return newStreak;
+      const newStreak = currentStreak + 1;
+      setCurrentStreak(newStreak);
+      setMaxStreak(m => Math.max(m, newStreak));
+      
+      // Show confetti for streaks of 3, 5, 10+
+      if (newStreak === 3 || newStreak === 5 || newStreak === 10 || newStreak % 10 === 0) {
+        setShowConfetti(prev => prev + 1);
+        await playSound('streak');
+      }
+      
+      // Get encouragement message
+      const message = getEncouragementMessage('correct', {
+        streak: newStreak,
+        accuracy: attempted > 0 ? (correctCount / attempted) * 100 : 0,
+        isFirstCorrect: attempted === 1,
+        isPersonalBest: newStreak > maxStreak
       });
+      setEncouragementMessage(message);
     } else {
       setCurrentStreak(0);
+      const message = getEncouragementMessage('incorrect', {
+        streak: currentStreak,
+        accuracy: attempted > 0 ? (correctCount / attempted) * 100 : 0
+      });
+      setEncouragementMessage(message);
     }
     
     setSumTimeMs(ms => ms + elapsed);
     setFlash(isCorrect ? 'correct' : 'incorrect');
+    
     const next = () => {
       setFlash(null);
+      setEncouragementMessage('');
       setAnswer('');
       setCurrentItem(generateEasyItem());
       inputRef.current?.focus();
     };
+    
     if (isCorrect) {
       setTimeout(next, 120);
     } else {
@@ -327,59 +373,188 @@ export default function Practice() {
   }, [answer, currentItem]);
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 24, maxWidth: 720, margin: '0 auto' }}>
-      {/* Timer bar */}
-      <div style={{ height: 8, background: '#eee', borderRadius: 4, overflow: 'hidden' }} aria-hidden>
-        <div
-          style={{
-            height: 8,
-            width: `${Math.max(0, Math.min(100, (timeLeft / lengthSec) * 100))}%`,
-            background: timeLeft <= 5 ? '#e11d48' : '#10b981',
-            transition: 'width 1s linear',
-          }}
-        />
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-        <div>Time: <strong>{timeLeft}s</strong></div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div>Score: <strong>{correctCount}/{attempted}</strong></div>
-          {currentStreak > 0 && (
-            <div style={{ color: '#10b981', fontWeight: 'bold' }}>
-              🔥 {currentStreak}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header with Timer and Controls */}
+        <motion.div 
+          className="flex justify-between items-center mb-8"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="flex items-center gap-4">
+            <TimerRing 
+              timeLeft={timeLeft} 
+              totalTime={lengthSec} 
+              size={80}
+              className={isPaused ? 'opacity-50' : ''}
+            />
+            <div>
+              <div className="text-2xl font-bold text-gray-900">
+                {isPaused ? 'Paused' : `${timeLeft}s`}
+              </div>
+              <div className="text-sm text-gray-500">Time Remaining</div>
             </div>
-          )}
-          <button onClick={() => endSession('exit')} style={{ padding: '6px 10px', fontSize: 14 }}>Exit</button>
-        </div>
-      </div>
-      <div style={{
-        marginTop: 48,
-        textAlign: 'center',
-        padding: 16,
-        borderRadius: 12,
-        transition: 'background-color 120ms ease, box-shadow 120ms ease',
-        backgroundColor: flash === 'correct' ? 'rgba(16,185,129,0.12)' : flash === 'incorrect' ? 'rgba(225,29,72,0.12)' : 'transparent',
-        boxShadow: flash ? '0 0 0 4px ' + (flash === 'correct' ? 'rgba(16,185,129,0.25)' : 'rgba(225,29,72,0.25)') : 'none',
-      }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>
-          {currentItem.promptText}
-        </div>
-        <input
-          ref={inputRef}
-          value={answer}
-          onChange={e => setAnswer(e.target.value.replace(/[^0-9\-\.]/g, ''))}
-          inputMode="decimal"
-          style={{ fontSize: 32, padding: 12, width: 260, textAlign: 'center' }}
-          aria-label="Your answer"
-          autoFocus
-        />
-        <div style={{ marginTop: 12 }}>
-          <button onClick={submit} style={{ fontSize: 18, padding: '8px 16px' }}>Submit (Enter)</button>
-        </div>
-        {flash && (
-          <div style={{ marginTop: 16, fontSize: 22, fontWeight: 600, color: flash === 'correct' ? '#059669' : '#b91c1c' }}>
-            {flash === 'correct' ? 'Correct!' : `Incorrect. Answer: ${currentItem.correctAnswer}`}
           </div>
-        )}
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={togglePause}
+              className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
+            >
+              {isPaused ? <Play size={20} /> : <Pause size={20} />}
+            </button>
+            <button
+              onClick={() => endSession('exit')}
+              className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
+            >
+              <RotateCcw size={20} />
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Stats Bar */}
+        <motion.div 
+          className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="text-blue-500" size={16} />
+              <span className="text-sm font-medium text-gray-600">Score</span>
+            </div>
+            <div className="text-xl font-bold text-gray-900">
+              {correctCount}/{attempted}
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-yellow-500">🔥</span>
+              <span className="text-sm font-medium text-gray-600">Streak</span>
+            </div>
+            <motion.div 
+              className="text-xl font-bold text-gray-900"
+              animate={currentStreak > 0 ? streakGlow : {}}
+            >
+              {currentStreak}
+            </motion.div>
+          </div>
+          
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="text-green-500" size={16} />
+              <span className="text-sm font-medium text-gray-600">Accuracy</span>
+            </div>
+            <div className="text-xl font-bold text-gray-900">
+              {attempted > 0 ? Math.round((correctCount / attempted) * 100) : 0}%
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="text-purple-500" size={16} />
+              <span className="text-sm font-medium text-gray-600">Avg Time</span>
+            </div>
+            <div className="text-xl font-bold text-gray-900">
+              {attempted > 0 ? Math.round(sumTimeMs / attempted / 1000 * 10) / 10 : 0}s
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Main Practice Area */}
+        <motion.div 
+          className="text-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <motion.div 
+            className={`bg-white rounded-2xl p-8 shadow-lg border-2 transition-all duration-300 ${
+              flash === 'correct' 
+                ? 'border-green-200 bg-green-50' 
+                : flash === 'incorrect' 
+                ? 'border-red-200 bg-red-50' 
+                : 'border-gray-200'
+            }`}
+            animate={flash === 'incorrect' ? shake : {}}
+          >
+            {/* Problem Display */}
+            <motion.div 
+              className="text-6xl font-bold text-gray-900 mb-8"
+              key={currentItem.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {currentItem.promptText}
+            </motion.div>
+
+            {/* Answer Input */}
+            <motion.input
+              ref={inputRef}
+              value={answer}
+              onChange={e => setAnswer(e.target.value.replace(/[^0-9\-\.]/g, ''))}
+              inputMode="decimal"
+              className="text-4xl font-mono text-center w-80 py-4 px-6 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
+              placeholder="?"
+              autoFocus
+              disabled={isPaused}
+            />
+
+            {/* Submit Button */}
+            <motion.button
+              onClick={submit}
+              className="mt-6 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              disabled={isPaused}
+            >
+              Submit (Enter)
+            </motion.button>
+
+            {/* Feedback Messages */}
+            <AnimatePresence>
+              {flash && (
+                <motion.div
+                  className="mt-6"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className={`text-2xl font-bold ${
+                    flash === 'correct' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {flash === 'correct' ? 'Correct!' : `Incorrect. Answer: ${currentItem.correctAnswer}`}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Encouragement Message */}
+            <AnimatePresence>
+              {encouragementMessage && (
+                <motion.div
+                  className="mt-4"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="text-lg font-medium text-gray-700">
+                    {encouragementMessage}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </motion.div>
+
+        {/* Confetti Effect */}
+        <ConfettiBurst trigger={showConfetti} />
       </div>
     </div>
   );
