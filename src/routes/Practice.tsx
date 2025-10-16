@@ -346,18 +346,27 @@ export default function Practice() {
     setSumTimeMs(ms => ms + elapsed);
     setFlash(isCorrect ? 'correct' : 'incorrect');
     
-    const next = () => {
-      setFlash(null);
-      setEncouragementMessage('');
+    // Show next task immediately
+    const showNextTask = () => {
       setAnswer('');
       setCurrentItem(generateEasyItem());
       inputRef.current?.focus();
     };
     
+    // Clear feedback messages after delay
+    const clearFeedback = () => {
+      setFlash(null);
+      setEncouragementMessage('');
+    };
+    
+    // Show next task immediately
+    showNextTask();
+    
+    // Clear feedback after appropriate delay
     if (isCorrect) {
-      setTimeout(next, 120);
+      setTimeout(clearFeedback, 1500);
     } else {
-      setTimeout(next, 900);
+      setTimeout(clearFeedback, 2000);
     }
   }
 
@@ -492,66 +501,71 @@ export default function Practice() {
               {currentItem.promptText}
             </motion.div>
 
-            {/* Answer Input */}
-            <motion.input
-              ref={inputRef}
-              value={answer}
-              onChange={e => setAnswer(e.target.value.replace(/[^0-9\-\.]/g, ''))}
-              inputMode="decimal"
-              className="text-4xl font-mono text-center w-80 py-4 px-6 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-              placeholder="?"
-              autoFocus
-              disabled={isPaused}
-            />
+            {/* Answer Input and Submit Button Container */}
+            <div className="flex flex-col items-center space-y-6">
+              {/* Answer Input */}
+              <motion.input
+                ref={inputRef}
+                value={answer}
+                onChange={e => setAnswer(e.target.value.replace(/[^0-9\-\.]/g, ''))}
+                inputMode="decimal"
+                className="text-4xl font-mono text-center w-80 py-4 px-6 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
+                placeholder="?"
+                autoFocus
+                disabled={isPaused}
+              />
 
-            {/* Submit Button */}
-            <motion.button
-              onClick={submit}
-              className="mt-6 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              disabled={isPaused}
-            >
-              Submit (Enter)
-            </motion.button>
+              {/* Submit Button */}
+              <motion.button
+                onClick={submit}
+                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                disabled={isPaused}
+              >
+                Submit (Enter)
+              </motion.button>
+            </div>
 
-            {/* Feedback Messages */}
-            <AnimatePresence>
-              {flash && (
-                <motion.div
-                  className="mt-6"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <div className={`text-2xl font-bold ${
-                    flash === 'correct' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {flash === 'correct' ? 'Correct!' : `Incorrect. Answer: ${currentItem.correctAnswer}`}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Encouragement Message */}
-            <AnimatePresence>
-              {encouragementMessage && (
-                <motion.div
-                  className="mt-4"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <div className="text-lg font-medium text-gray-700">
-                    {encouragementMessage}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </motion.div>
         </motion.div>
+
+        {/* Fixed Feedback Messages */}
+        <div className="mt-8 min-h-[120px] flex flex-col items-center justify-center">
+          <AnimatePresence>
+            {flash && (
+              <motion.div
+                className="text-center"
+                initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.8, y: -20 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <div className={`text-3xl font-bold mb-2 ${
+                  flash === 'correct' ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {flash === 'correct' ? 'Correct!' : `Incorrect. Answer: ${currentItem.correctAnswer}`}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {encouragementMessage && (
+              <motion.div
+                className="text-center"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <div className="text-xl font-medium text-gray-700 max-w-md">
+                  {encouragementMessage}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* Confetti Effect */}
         <ConfettiBurst trigger={showConfetti} />
