@@ -4,7 +4,6 @@ import Practice from './routes/Practice';
 import Summary from './routes/Summary';
 import Settings from './routes/Settings';
 import Statistics from './routes/Statistics';
-import Goals from './routes/Goals';
 
 export default function App() {
   return (
@@ -28,7 +27,6 @@ export default function App() {
           <Route path="/summary/:sessionId" element={<Summary />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/statistics" element={<Statistics />} />
-          <Route path="/goals" element={<Goals />} />
         </Routes>
       </main>
     </div>

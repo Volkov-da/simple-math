@@ -91,41 +91,11 @@ export function TimerRing({
   
   const color = isWarning ? '#ef4444' : '#22c55e';
   const backgroundColor = isWarning ? '#fecaca' : '#dcfce7';
-
-  return (
-    <ProgressRing
-      progress={progress}
-      size={size}
-      strokeWidth={strokeWidth}
-      color={color}
-      backgroundColor={backgroundColor}
-      className={className}
-      animated={true}
-    />
-  );
-}
-
-interface CircularProgressProps {
-  value: number;
-  max: number;
-  size?: number;
-  strokeWidth?: number;
-  color?: string;
-  showPercentage?: boolean;
-  className?: string;
-}
-
-export function CircularProgress({
-  value,
-  max,
-  size = 100,
-  strokeWidth = 8,
-  color = '#3b82f6',
-  showPercentage = true,
-  className = ''
-}: CircularProgressProps) {
-  const progress = Math.min(value / max, 1);
-  const percentage = Math.round(progress * 100);
+  
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const strokeDasharray = circumference;
+  const strokeDashoffset = circumference - (progress * circumference);
 
   return (
     <div className={`relative ${className}`} style={{ width: size, height: size }}>
@@ -138,8 +108,8 @@ export function CircularProgress({
         <circle
           cx={size / 2}
           cy={size / 2}
-          r={(size - strokeWidth) / 2}
-          stroke="#e5e7eb"
+          r={radius}
+          stroke={backgroundColor}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -147,26 +117,27 @@ export function CircularProgress({
         <motion.circle
           cx={size / 2}
           cy={size / 2}
-          r={(size - strokeWidth) / 2}
+          r={radius}
           stroke={color}
           strokeWidth={strokeWidth}
           fill="none"
           strokeLinecap="round"
-          strokeDasharray={`${2 * Math.PI * (size - strokeWidth) / 2}`}
-          initial={{ strokeDashoffset: 2 * Math.PI * (size - strokeWidth) / 2 }}
-          animate={{ 
-            strokeDashoffset: 2 * Math.PI * (size - strokeWidth) / 2 * (1 - progress)
-          }}
-          transition={{ duration: 0.8, ease: "easeInOut" }}
+          strokeDasharray={strokeDasharray}
+          strokeDashoffset={strokeDashoffset}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
         />
       </svg>
-      {showPercentage && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-lg font-semibold" style={{ color }}>
-            {percentage}%
+      {/* Center content - showing remaining seconds */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg font-bold" style={{ color }}>
+            {timeLeft}s
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
+

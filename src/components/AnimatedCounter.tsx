@@ -75,6 +75,7 @@ interface StatCardProps {
   className?: string;
   prefix?: string;
   suffix?: string;
+  decimals?: number;
 }
 
 export function StatCard({
@@ -86,7 +87,8 @@ export function StatCard({
   animated = true,
   className = '',
   prefix = '',
-  suffix = ''
+  suffix = '',
+  decimals = 0
 }: StatCardProps) {
   return (
     <motion.div
@@ -101,9 +103,9 @@ export function StatCard({
       </div>
       <div className={`text-2xl font-bold ${color}`}>
         {animated ? (
-          <AnimatedCounter value={value} duration={0.8} prefix={prefix} suffix={suffix} />
+          <AnimatedCounter value={value} duration={0.8} prefix={prefix} suffix={suffix} decimals={decimals} />
         ) : (
-          `${prefix}${value.toLocaleString()}${suffix}`
+          `${prefix}${value.toFixed(decimals)}${suffix}`
         )}
       </div>
       {subtitle && (
@@ -113,47 +115,3 @@ export function StatCard({
   );
 }
 
-interface ProgressBarProps {
-  value: number;
-  max: number;
-  label?: string;
-  color?: string;
-  showPercentage?: boolean;
-  animated?: boolean;
-  className?: string;
-}
-
-export function ProgressBar({
-  value,
-  max,
-  label,
-  color = 'bg-blue-500',
-  showPercentage = true,
-  animated = true,
-  className = ''
-}: ProgressBarProps) {
-  const percentage = Math.min((value / max) * 100, 100);
-
-  return (
-    <div className={`w-full ${className}`}>
-      {label && (
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-gray-700">{label}</span>
-          {showPercentage && (
-            <span className="text-sm text-gray-500">
-              {Math.round(percentage)}%
-            </span>
-          )}
-        </div>
-      )}
-      <div className="w-full bg-gray-200 rounded-full h-2">
-        <motion.div
-          className={`h-2 rounded-full ${color}`}
-          initial={animated ? { width: 0 } : undefined}
-          animate={animated ? { width: `${percentage}%` } : undefined}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        />
-      </div>
-    </div>
-  );
-}

@@ -183,28 +183,3 @@ export function getPerformanceRating(accuracy: number, avgTime: number): {
   return { rating: "Keep Practicing", emoji: "💪", color: "text-green-500" };
 }
 
-export function getSkillFeedback(skill: string, accuracy: number): string {
-  const skillNames: Record<string, string> = {
-    addition: "Addition",
-    subtraction: "Subtraction", 
-    multiplication: "Multiplication",
-    division: "Division",
-    percent: "Percentages"
-  };
-
-  const skillName = skillNames[skill] || skill;
-
-  if (accuracy >= 90) {
-    return `🌟 Excellent at ${skillName}!`;
-  }
-  if (accuracy >= 80) {
-    return `👍 Great at ${skillName}!`;
-  }
-  if (accuracy >= 70) {
-    return `📚 Good at ${skillName}!`;
-  }
-  if (accuracy >= 60) {
-    return `📖 Keep practicing ${skillName}!`;
-  }
-  return `💪 Focus on ${skillName}!`;
-}

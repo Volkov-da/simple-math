@@ -1,12 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Trophy, Target, Clock, Zap, TrendingUp, Star, Award } from 'lucide-react';
+import { ArrowLeft, Trophy, Target, Clock, Zap, TrendingUp, Award } from 'lucide-react';
 import { useSound } from '../contexts/SoundContext';
-import { getPerformanceRating, getSkillFeedback } from '../utils/encouragement';
-import { AnimatedCounter, StatCard, ProgressBar } from '../components/AnimatedCounter';
-import { CircularProgress } from '../components/ProgressRing';
-import { fadeIn, slideUp, scaleIn, bounceIn } from '../utils/animations';
+import { getPerformanceRating } from '../utils/encouragement';
+import { AnimatedCounter, StatCard } from '../components/AnimatedCounter';
 
 interface SessionSummary {
   id: string;
@@ -129,7 +127,7 @@ export default function Summary() {
           </Link>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Session Complete!</h1>
-            <p className="text-gray-600">{new Date(summary.startedAt).toLocaleDateString()}</p>
+            <p className="text-gray-600">{new Date(summary.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
           </div>
         </motion.div>
 
@@ -198,82 +196,65 @@ export default function Summary() {
           />
           <StatCard
             title="Avg Time"
-            value={Math.round(summary.totals.avgTimeMs / 1000 * 10) / 10}
+            value={summary.totals.avgTimeMs / 1000}
             suffix="s"
             icon={<Clock className="text-orange-500" size={20} />}
             color="text-orange-600"
             animated={true}
+            decimals={2}
           />
         </motion.div>
 
-        {/* Accuracy Visualization */}
-        <motion.div 
-          className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Breakdown</h3>
-          <div className="flex items-center gap-6">
-            <CircularProgress
-              value={summary.totals.accuracyPct}
-              max={100}
-              size={120}
-              color="#22c55e"
-              showPercentage={true}
-            />
-            <div className="flex-1">
-              <ProgressBar
-                value={summary.totals.correct}
-                max={summary.totals.attempted}
-                label="Correct Answers"
-                color="bg-green-500"
-                animated={true}
-              />
-              <div className="mt-4">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>Speed</span>
-                  <span>{Math.round(summary.totals.avgTimeMs / 1000 * 10) / 10}s per problem</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <motion.div
-                    className="bg-blue-500 h-2 rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(100, (5000 - summary.totals.avgTimeMs) / 50)}%` }}
-                    transition={{ duration: 1, delay: 0.5 }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Streak Stats */}
-          {summary.totals.maxStreak > 0 && (
+        {/* Streak Stats - Second Row */}
+        {summary.totals.maxStreak > 0 && (
           <motion.div 
-            className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-200 mb-8"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
           >
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-2xl">🔥</span>
-              <h3 className="text-lg font-semibold text-gray-900">Streak Performance</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-gray-600 mb-1">Best Streak</div>
-                <div className="text-2xl font-bold text-yellow-600">
-                  <AnimatedCounter value={summary.totals.maxStreak} />
-                </div>
+            <StatCard
+              title="Best Streak"
+              value={summary.totals.maxStreak}
+              icon={<span className="text-2xl">🔥</span>}
+              color="text-yellow-600"
+              animated={true}
+            />
+            <StatCard
+              title="Final Streak"
+              value={summary.totals.finalStreak}
+              icon={<span className="text-2xl">⚡</span>}
+              color="text-orange-600"
+              animated={true}
+            />
+            <motion.div
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-500">Session Date</h3>
+                <div className="text-gray-400"><span className="text-2xl">📅</span></div>
               </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-1">Final Streak</div>
-                <div className="text-2xl font-bold text-orange-600">
-                  <AnimatedCounter value={summary.totals.finalStreak} />
-                </div>
+              <div className="text-2xl font-bold text-indigo-600">
+                {new Date(summary.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
               </div>
-            </div>
+            </motion.div>
+            <motion.div
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-500">Session Time</h3>
+                <div className="text-gray-400"><span className="text-2xl">🕐</span></div>
+              </div>
+              <div className="text-2xl font-bold text-teal-600">
+                {new Date(summary.startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
+              </div>
+            </motion.div>
           </motion.div>
         )}
 
@@ -298,13 +279,13 @@ export default function Summary() {
               >
                 <div className="flex justify-between items-center">
                   <div>
-                    <div className="font-medium text-gray-900">
-                      {new Date(session.startedAt).toLocaleDateString()} — {new Date(session.startedAt).toLocaleTimeString()}
-                      {index === 0 && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">LATEST</span>}
-                    </div>
+                        <div className="font-medium text-gray-900">
+                          {new Date(session.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} — {new Date(session.startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                          {index === 0 && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">LATEST</span>}
+                        </div>
                     <div className="text-sm text-gray-600">
                       {session.totals.correct}/{session.totals.attempted} ({session.totals.accuracyPct}%) — 
-                      Avg: {(session.totals.avgTimeMs / 1000).toFixed(1)}s per task
+                      Avg: {(session.totals.avgTimeMs / 1000).toFixed(2)}s per task
                     </div>
                   </div>
                   {session.totals.maxStreak > 0 && (

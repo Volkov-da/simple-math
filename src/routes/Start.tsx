@@ -1,14 +1,12 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, Settings, Play, Target, Trophy, Clock, Star } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import { BarChart3, Settings, Play, Target, Trophy, Clock } from 'lucide-react';
 import { useSound } from '../contexts/SoundContext';
 import { AnimatedCounter } from '../components/AnimatedCounter';
 
 export default function Start() {
   const navigate = useNavigate();
-  const { theme } = useTheme();
   const { playSound } = useSound();
   const [lengthSec, setLengthSec] = useState<30 | 60 | 120>(60);
   const [stats, setStats] = useState({
@@ -89,6 +87,8 @@ export default function Start() {
 
   const quickStart = async (duration: 30 | 60 | 120) => {
     setLengthSec(duration);
+    // Save the duration to localStorage immediately
+    localStorage.setItem('lengthSec', String(duration));
     await playSound('click');
     setTimeout(() => start(), 100);
   };
@@ -108,13 +108,6 @@ export default function Start() {
             <p className="text-gray-600">Master arithmetic with timed practice sessions</p>
           </div>
           <div className="flex gap-3">
-            <Link 
-              to="/goals" 
-              className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
-              title="Goals & Challenges"
-            >
-              <Star size={20} />
-            </Link>
             <Link 
               to="/statistics" 
               className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"

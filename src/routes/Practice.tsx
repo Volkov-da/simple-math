@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, RotateCcw, Target, Clock, Zap } from 'lucide-react';
+import { Play, Pause, CheckCircle, Target, Clock, Zap } from 'lucide-react';
 import { useSound } from '../contexts/SoundContext';
 import { getEncouragementMessage } from '../utils/encouragement';
 import { ConfettiBurst } from '../components/Confetti';
 import { TimerRing } from '../components/ProgressRing';
-import { fadeIn, slideUp, scaleIn, bounceIn, shake, glow, streakGlow } from '../utils/animations';
+import { shake, streakGlow } from '../utils/animations';
 
 type Skill = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'percent';
 
@@ -67,21 +67,61 @@ function generateEasyItem(): Item {
     percent: true,
   };
   const savedDigitsRaw = localStorage.getItem('digits');
-  const digits = savedDigitsRaw ? (JSON.parse(savedDigitsRaw) as Record<string, number>) : {
-    addition: 2,
-    subtraction: 2,
-    multiplication: 1,
-    division: 1,
-    percent: 2,
-  };
+  let digits: Record<string, { first: { min: number; max: number }; second: { min: number; max: number } }>;
+  
+  if (savedDigitsRaw) {
+    const parsed = JSON.parse(savedDigitsRaw);
+    // Handle migration from old format to new format
+    if (parsed.addition && typeof parsed.addition === 'number') {
+      // Old format (single number) - convert to new format
+      digits = {
+        addition: { first: { min: parsed.addition, max: parsed.addition }, second: { min: parsed.addition, max: parsed.addition } },
+        subtraction: { first: { min: parsed.subtraction, max: parsed.subtraction }, second: { min: parsed.subtraction, max: parsed.subtraction } },
+        multiplication: { first: { min: parsed.multiplication, max: parsed.multiplication }, second: { min: parsed.multiplication, max: parsed.multiplication } },
+        division: { first: { min: parsed.division, max: parsed.division }, second: { min: parsed.division, max: parsed.division } },
+        percent: { first: { min: parsed.percent, max: parsed.percent }, second: { min: parsed.percent, max: parsed.percent } },
+      };
+    } else if (parsed.addition && typeof parsed.addition === 'object' && 'first' in parsed.addition && typeof parsed.addition.first === 'number') {
+      // Previous format (first/second numbers) - convert to range format
+      digits = {
+        addition: { first: { min: parsed.addition.first, max: parsed.addition.first }, second: { min: parsed.addition.second, max: parsed.addition.second } },
+        subtraction: { first: { min: parsed.subtraction.first, max: parsed.subtraction.first }, second: { min: parsed.subtraction.second, max: parsed.subtraction.second } },
+        multiplication: { first: { min: parsed.multiplication.first, max: parsed.multiplication.first }, second: { min: parsed.multiplication.second, max: parsed.multiplication.second } },
+        division: { first: { min: parsed.division.first, max: parsed.division.first }, second: { min: parsed.division.second, max: parsed.division.second } },
+        percent: { first: { min: parsed.percent.first, max: parsed.percent.first }, second: { min: parsed.percent.second, max: parsed.percent.second } },
+      };
+    } else {
+      digits = parsed;
+    }
+  } else {
+    digits = {
+      addition: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
+      subtraction: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
+      multiplication: { first: { min: 1, max: 1 }, second: { min: 1, max: 1 } },
+      division: { first: { min: 1, max: 1 }, second: { min: 1, max: 1 } },
+      percent: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
+    };
+  }
   const pool: Skill[] = (['addition','subtraction','multiplication','division','percent'] as Skill[]).filter(s => enabled[s]);
   const skillIndex = randInt(0, Math.max(0, pool.length - 1));
   const skill: Skill = pool[skillIndex] ?? 'addition';
-  const dAdd = Math.max(1, Math.min(4, digits['addition'] ?? 2));
-  const dSub = Math.max(1, Math.min(4, digits['subtraction'] ?? 2));
-  const dMul = Math.max(1, Math.min(4, digits['multiplication'] ?? 1));
-  const dDiv = Math.max(1, Math.min(4, digits['division'] ?? 1));
-  const dPct = Math.max(1, Math.min(4, digits['percent'] ?? 2));
+  // Helper function to get random digit count within range
+  const getRandomDigits = (range: { min: number; max: number }) => {
+    const min = Math.max(1, Math.min(4, range.min));
+    const max = Math.max(1, Math.min(4, range.max));
+    return randInt(min, max);
+  };
+
+  const dAddFirst = getRandomDigits(digits['addition']?.first ?? { min: 2, max: 2 });
+  const dAddSecond = getRandomDigits(digits['addition']?.second ?? { min: 2, max: 2 });
+  const dSubFirst = getRandomDigits(digits['subtraction']?.first ?? { min: 2, max: 2 });
+  const dSubSecond = getRandomDigits(digits['subtraction']?.second ?? { min: 2, max: 2 });
+  const dMulFirst = getRandomDigits(digits['multiplication']?.first ?? { min: 1, max: 1 });
+  const dMulSecond = getRandomDigits(digits['multiplication']?.second ?? { min: 1, max: 1 });
+  const dDivFirst = getRandomDigits(digits['division']?.first ?? { min: 1, max: 1 });
+  const dDivSecond = getRandomDigits(digits['division']?.second ?? { min: 1, max: 1 });
+  const dPctFirst = getRandomDigits(digits['percent']?.first ?? { min: 2, max: 2 });
+  const dPctSecond = getRandomDigits(digits['percent']?.second ?? { min: 2, max: 2 });
 
   const minForDigits = (d: number) => (d <= 1 ? 0 : Math.pow(10, d - 1));
   const maxForDigits = (d: number) => (d <= 1 ? 9 : Math.pow(10, d) - 1);
@@ -89,8 +129,8 @@ function generateEasyItem(): Item {
     let a, b;
     let attempts = 0;
     do {
-      a = randInt(minForDigits(dAdd), maxForDigits(dAdd));
-      b = randInt(minForDigits(dAdd), maxForDigits(dAdd));
+      a = randInt(minForDigits(dAddFirst), maxForDigits(dAddFirst));
+      b = randInt(minForDigits(dAddSecond), maxForDigits(dAddSecond));
       attempts++;
     } while (isTrivialAddition(a, b) && attempts < 20);
     
@@ -100,8 +140,8 @@ function generateEasyItem(): Item {
     let a, b;
     let attempts = 0;
     do {
-      a = randInt(minForDigits(dSub), maxForDigits(dSub));
-      b = randInt(minForDigits(dSub), maxForDigits(dSub));
+      a = randInt(minForDigits(dSubFirst), maxForDigits(dSubFirst));
+      b = randInt(minForDigits(dSubSecond), maxForDigits(dSubSecond));
       if (b > a) [a, b] = [b, a];
       attempts++;
     } while (isTrivialSubtraction(a, b) && attempts < 20);
@@ -112,25 +152,25 @@ function generateEasyItem(): Item {
     let a, b;
     let attempts = 0;
     do {
-      a = randInt(minForDigits(dMul), maxForDigits(dMul));
-      b = randInt(minForDigits(dMul), maxForDigits(dMul));
+      a = randInt(minForDigits(dMulFirst), maxForDigits(dMulFirst));
+      b = randInt(minForDigits(dMulSecond), maxForDigits(dMulSecond));
       attempts++;
     } while (isTrivialMultiplication(a, b) && attempts < 20);
     
     return { id: crypto.randomUUID(), skill, operator: '*', operands: [a, b], correctAnswer: String(a * b), promptText: `${a} × ${b} = ?` };
   }
   if (skill === 'division') {
-    // choose divisor with dDiv digits; choose small multiplier to keep dividend within same digit count if possible
+    // choose divisor with dDivSecond digits; choose dividend with dDivFirst digits
     const maxTries = 20;
     let a = 0;
     let b = 1;
     let attempts = 0;
     
     for (let i = 0; i < maxTries; i++) {
-      b = randInt(Math.max(1, minForDigits(dDiv)), maxForDigits(dDiv));
+      b = randInt(Math.max(1, minForDigits(dDivSecond)), maxForDigits(dDivSecond));
       const k = randInt(1, 9);
       const candidate = b * k;
-      if (String(candidate).length === String(maxForDigits(dDiv)).length || dDiv === 1) {
+      if (String(candidate).length <= String(maxForDigits(dDivFirst)).length || dDivFirst === 1) {
         a = candidate;
         if (!isTrivialDivision(a, b)) {
           break;
@@ -143,7 +183,7 @@ function generateEasyItem(): Item {
     // If we still have a trivial case after maxTries, try a few more attempts with different approach
     if (isTrivialDivision(a, b) && attempts < 15) {
       for (let i = 0; i < 5; i++) {
-        b = randInt(Math.max(2, minForDigits(dDiv)), maxForDigits(dDiv));
+        b = randInt(Math.max(2, minForDigits(dDivSecond)), maxForDigits(dDivSecond));
         const k = randInt(2, 8);
         a = b * k;
         if (!isTrivialDivision(a, b)) {
@@ -161,7 +201,7 @@ function generateEasyItem(): Item {
   let attempts = 0;
   while (attempts < 100) {
     attempts++;
-    const candidateY = randInt(Math.max(1, minForDigits(dPct)), maxForDigits(dPct));
+    const candidateY = randInt(Math.max(1, minForDigits(dPctSecond)), maxForDigits(dPctSecond));
     const D = gcd(candidateY, 100);
     const Step = 100 / D; // integer
     if (Step >= 100) continue; // would force 100% only -> skip
@@ -180,7 +220,7 @@ function generateEasyItem(): Item {
   // If we still have a trivial case, try a different approach
   if (isTrivialPercent(x, y) && attempts < 50) {
     for (let i = 0; i < 10; i++) {
-      y = randInt(Math.max(2, minForDigits(dPct)), maxForDigits(dPct));
+      y = randInt(Math.max(2, minForDigits(dPctSecond)), maxForDigits(dPctSecond));
       x = randInt(10, 90); // Avoid 0%, 100%, and very simple percentages
       if (!isTrivialPercent(x, y)) {
         break;
@@ -218,6 +258,7 @@ export default function Practice() {
   const [encouragementMessage, setEncouragementMessage] = useState<string>('');
   const [showConfetti, setShowConfetti] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [lastCorrectAnswer, setLastCorrectAnswer] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
   const startedAt = useMemo(() => Date.now(), []);
 
@@ -240,7 +281,7 @@ export default function Practice() {
     const endedAt = Date.now();
     const attemptedSafe = attempted;
     const correctSafe = correctCount;
-    const avgTime = attemptedSafe > 0 ? Math.round(sumTimeMs / attemptedSafe) : 0;
+    const avgTime = attemptedSafe > 0 ? sumTimeMs / attemptedSafe : 0;
     const accuracy = attemptedSafe > 0 ? Math.round((correctSafe / attemptedSafe) * 100) : 0;
     const summary = {
       id: crypto.randomUUID(),
@@ -305,6 +346,10 @@ export default function Practice() {
     const elapsed = now - lastSubmitAt.current;
     lastSubmitAt.current = now;
     const isCorrect = answer.trim() === currentItem.correctAnswer;
+    
+    // Store the correct answer before moving to next task
+    setLastCorrectAnswer(currentItem.correctAnswer);
+    
     setAttempted(a => a + 1);
     
     // Play sound effects
@@ -400,9 +445,9 @@ export default function Practice() {
             />
             <div>
               <div className="text-2xl font-bold text-gray-900">
-                {isPaused ? 'Paused' : `${timeLeft}s`}
+                {isPaused ? 'Paused' : 'Time Remaining'}
               </div>
-              <div className="text-sm text-gray-500">Time Remaining</div>
+              <div className="text-sm text-gray-500">Practice Session</div>
             </div>
           </div>
           
@@ -417,7 +462,7 @@ export default function Practice() {
               onClick={() => endSession('exit')}
               className="p-3 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 text-gray-600 hover:text-gray-900"
             >
-              <RotateCcw size={20} />
+              <CheckCircle size={20} />
             </button>
           </div>
         </motion.div>
@@ -468,7 +513,7 @@ export default function Practice() {
               <span className="text-sm font-medium text-gray-600">Avg Time</span>
             </div>
             <div className="text-xl font-bold text-gray-900">
-              {attempted > 0 ? Math.round(sumTimeMs / attempted / 1000 * 10) / 10 : 0}s
+              {attempted > 0 ? (sumTimeMs / attempted / 1000).toFixed(2) : '0.00'}s
             </div>
           </div>
         </motion.div>
@@ -544,7 +589,7 @@ export default function Practice() {
                 <div className={`text-3xl font-bold mb-2 ${
                   flash === 'correct' ? 'text-green-600' : 'text-red-600'
                 }`}>
-                  {flash === 'correct' ? 'Correct!' : `Incorrect. Answer: ${currentItem.correctAnswer}`}
+                  {flash === 'correct' ? 'Correct!' : `Incorrect. Answer: ${lastCorrectAnswer}`}
                 </div>
               </motion.div>
             )}
