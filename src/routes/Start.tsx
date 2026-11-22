@@ -4,11 +4,12 @@ import { motion } from 'framer-motion';
 import { BarChart3, Settings, Play, Target, Trophy, Clock } from 'lucide-react';
 import { useSound } from '../contexts/SoundContext';
 import { AnimatedCounter } from '../components/AnimatedCounter';
+import { loadSessions, saveSettings } from '../lib/storage';
+import type { SessionLength } from '../lib/types';
 
 export default function Start() {
   const navigate = useNavigate();
   const { playSound } = useSound();
-  const [lengthSec, setLengthSec] = useState<30 | 60 | 120>(60);
   const [stats, setStats] = useState({
     totalSessions: 0,
     totalCorrect: 0,
@@ -17,78 +18,23 @@ export default function Start() {
   });
 
   useEffect(() => {
-    const loadSettings = () => {
-      try {
-        const savedLength = localStorage.getItem('lengthSec');
-        if (savedLength) setLengthSec(Number(savedLength) as 30 | 60 | 120);
-      } catch (error) {
-        console.error('Error loading settings:', error);
-      }
-    };
-
-    const loadStats = () => {
-      try {
-        const sessions = JSON.parse(localStorage.getItem('summaries') || '[]');
-        const today = new Date().toDateString();
-        
-        const todaySessions = sessions.filter((s: any) => 
-          new Date(s.startedAt).toDateString() === today
-        ).length;
-
-        const totalCorrect = sessions.reduce((sum: number, s: any) => sum + (s.totals.correct || 0), 0);
-        const bestStreak = Math.max(...sessions.map((s: any) => s.totals.maxStreak || 0), 0);
-
-        setStats({
-          totalSessions: sessions.length,
-          totalCorrect,
-          bestStreak,
-          todaySessions
-        });
-      } catch (error) {
-        console.error('Error loading stats:', error);
-      }
-    };
-
-    loadSettings();
-    loadStats();
+    const sessions = loadSessions();
+    const today = new Date().toDateString();
+    setStats({
+      totalSessions: sessions.length,
+      totalCorrect: sessions.reduce((sum, s) => sum + (s.totals.correct || 0), 0),
+      bestStreak: Math.max(0, ...sessions.map(s => s.totals.maxStreak || 0)),
+      todaySessions: sessions.filter(s => new Date(s.startedAt).toDateString() === today).length,
+    });
   }, []);
 
   const start = async () => {
     await playSound('click');
-    
-    // Ensure default settings are saved if they don't exist
-    try {
-      if (!localStorage.getItem('ops')) {
-        localStorage.setItem('ops', JSON.stringify({
-          addition: true,
-          subtraction: true,
-          multiplication: true,
-          division: true,
-          percent: true,
-        }));
-      }
-      if (!localStorage.getItem('digits')) {
-        localStorage.setItem('digits', JSON.stringify({
-          addition: 2,
-          subtraction: 2,
-          multiplication: 1,
-          division: 1,
-          percent: 2,
-        }));
-      }
-      if (!localStorage.getItem('lengthSec')) {
-        localStorage.setItem('lengthSec', String(lengthSec));
-      }
-    } catch (error) {
-      console.error('Error saving default settings:', error);
-    }
     navigate('/practice');
   };
 
-  const quickStart = async (duration: 30 | 60 | 120) => {
-    setLengthSec(duration);
-    // Save the duration to localStorage immediately
-    localStorage.setItem('lengthSec', String(duration));
+  const quickStart = async (duration: SessionLength) => {
+    saveSettings({ lengthSec: duration });
     await playSound('click');
     setTimeout(() => start(), 100);
   };

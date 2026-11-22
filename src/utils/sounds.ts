@@ -7,8 +7,9 @@ class SoundManager {
   private volume: number = 0.5;
 
   constructor() {
+    // The AudioContext is created lazily on the first play() — browsers block audio
+    // contexts created before the user has interacted with the page.
     this.loadSettings();
-    this.initializeAudioContext();
   }
 
   private loadSettings() {
@@ -23,12 +24,20 @@ class SoundManager {
     }
   }
 
-  private async initializeAudioContext() {
+  private async ensureAudioContext(): Promise<AudioContext | null> {
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      await this.generateSounds();
+      if (!this.audioContext) {
+        const Ctor =
+          window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!Ctor) return null;
+        this.audioContext = new Ctor();
+        await this.generateSounds();
+      }
+      if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+      return this.audioContext;
     } catch (error) {
       console.error('Error initializing audio context:', error);
+      return null;
     }
   }
 
@@ -36,27 +45,28 @@ class SoundManager {
     if (!this.audioContext) return;
 
     // Generate correct sound (pleasant chime)
-    const correctBuffer = this.generateTone([523.25, 659.25, 783.99], 0.3, 'sine');
+    const correctBuffer = this.generateTone([523.25, 659.25, 783.99], 0.3);
     this.sounds.set('correct', correctBuffer);
 
     // Generate incorrect sound (low buzz)
-    const incorrectBuffer = this.generateTone([200, 150], 0.4, 'sawtooth');
+    const incorrectBuffer = this.generateTone([200, 150], 0.4);
     this.sounds.set('incorrect', incorrectBuffer);
 
     // Generate streak sound (fanfare)
-    const streakBuffer = this.generateTone([523.25, 659.25, 783.99, 1046.50], 0.6, 'sine');
+    const streakBuffer = this.generateTone([523.25, 659.25, 783.99, 1046.50], 0.6);
     this.sounds.set('streak', streakBuffer);
 
     // Generate victory sound (triumphant chord)
-    const victoryBuffer = this.generateTone([261.63, 329.63, 392.00, 523.25], 1.0, 'sine');
+    const victoryBuffer = this.generateTone([261.63, 329.63, 392.00, 523.25], 1.0);
     this.sounds.set('victory', victoryBuffer);
 
     // Generate click sound (subtle)
-    const clickBuffer = this.generateTone([800], 0.1, 'square');
+    const clickBuffer = this.generateTone([800], 0.1);
     this.sounds.set('click', clickBuffer);
   }
 
-  private generateTone(frequencies: number[], duration: number, waveType: OscillatorType): AudioBuffer {
+  /** Sums decaying sine waves at the given frequencies. */
+  private generateTone(frequencies: number[], duration: number): AudioBuffer {
     if (!this.audioContext) throw new Error('Audio context not initialized');
 
     const sampleRate = this.audioContext.sampleRate;
@@ -67,7 +77,7 @@ class SoundManager {
       const time = i / sampleRate;
       let sample = 0;
       
-      frequencies.forEach((freq, index) => {
+      frequencies.forEach(freq => {
         const amplitude = 0.3 / frequencies.length;
         const envelope = Math.exp(-time * 3); // Decay envelope
         sample += amplitude * envelope * Math.sin(2 * Math.PI * freq * time);
@@ -80,7 +90,8 @@ class SoundManager {
   }
 
   async play(soundType: SoundType) {
-    if (this.isMuted || !this.audioContext) return;
+    if (this.isMuted) return;
+    if (!(await this.ensureAudioContext()) || !this.audioContext) return;
 
     try {
       const buffer = this.sounds.get(soundType);

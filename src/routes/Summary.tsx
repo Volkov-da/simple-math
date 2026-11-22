@@ -4,65 +4,34 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Trophy, Target, Clock, Zap, TrendingUp, Award } from 'lucide-react';
 import { useSound } from '../contexts/SoundContext';
 import { getPerformanceRating } from '../utils/encouragement';
-import { AnimatedCounter, StatCard } from '../components/AnimatedCounter';
-
-interface SessionSummary {
-  id: string;
-  startedAt: string;
-  endedAt: string;
-  settings: {
-    skills: string[];
-    difficulty: string;
-    lengthSec: 30 | 60 | 120;
-    seed: string;
-  };
-  totals: {
-    attempted: number;
-    correct: number;
-    accuracyPct: number;
-    avgTimeMs: number;
-    maxStreak: number;
-    finalStreak: number;
-  };
-  perSkill: any;
-}
+import { StatCard } from '../components/AnimatedCounter';
+import { getSession, loadSessions } from '../lib/storage';
+import type { SessionSummary } from '../lib/types';
 
 export default function Summary() {
   const { sessionId } = useParams();
   const { playSound } = useSound();
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [recentSessions, setRecentSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCelebration, setShowCelebration] = useState(false);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Load current session summary
-        const summaryRaw = typeof window !== 'undefined' ? localStorage.getItem('lastSummary') : null;
-        const localSummary = summaryRaw ? JSON.parse(summaryRaw) : null;
-        setSummary(localSummary);
+    const session = getSession(sessionId);
+    const sessions = loadSessions();
+    setSummary(session);
+    setRecentSessions(sessions);
+    setLoading(false);
 
-        // Load recent sessions from localStorage
-        const localSessions = JSON.parse(localStorage.getItem('summaries') || '[]');
-        setRecentSessions(localSessions);
-
-        // Play victory sound and show celebration for good performance
-        if (localSummary && localSummary.totals.accuracyPct >= 80) {
-          await playSound('victory');
-          setShowCelebration(true);
-          setTimeout(() => setShowCelebration(false), 3000);
-        }
-      } catch (error) {
-        console.error('Error loading summary data:', error);
-        setRecentSessions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, [playSound]);
+    // Celebrate only the session that was just finished, not old ones opened from a link.
+    const isLatest = session != null && sessions[0]?.id === session.id;
+    if (isLatest && session.totals.accuracyPct >= 80) {
+      void playSound('victory');
+      setShowCelebration(true);
+      const t = window.setTimeout(() => setShowCelebration(false), 3000);
+      return () => window.clearTimeout(t);
+    }
+  }, [sessionId, playSound]);
 
   if (loading) {
     return (
@@ -106,8 +75,11 @@ export default function Summary() {
   }
 
   const performanceRating = getPerformanceRating(summary.totals.accuracyPct, summary.totals.avgTimeMs);
-  const isPersonalBest = recentSessions.length > 1 && 
-    summary.totals.accuracyPct > Math.max(...recentSessions.slice(1).map(s => s.totals.accuracyPct));
+  // Personal best = better accuracy than every session played before this one.
+  const earlierSessions = recentSessions.filter(s => s.id !== summary.id && s.startedAt < summary.startedAt);
+  const isPersonalBest =
+    earlierSessions.length > 0 &&
+    summary.totals.accuracyPct > Math.max(...earlierSessions.map(s => s.totals.accuracyPct));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">

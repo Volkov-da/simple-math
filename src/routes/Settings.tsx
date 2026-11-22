@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Volume2, VolumeX, Play, Check, X, Clock, Target } from 'lucide-react';
+import { ArrowLeft, Check, X, Clock } from 'lucide-react';
 import { useSound } from '../contexts/SoundContext';
+import { loadSettings, saveSettings } from '../lib/storage';
+import type { DigitSettings, OpsSettings, SessionLength } from '../lib/types';
 
 // Custom Range Slider Component
 interface RangeSliderProps {
@@ -15,7 +17,7 @@ interface RangeSliderProps {
   color?: string;
 }
 
-function RangeSlider({ min, max, value, onChange, disabled = false, label, color = 'blue' }: RangeSliderProps) {
+function RangeSlider({ min, max, value, onChange, disabled = false, color = 'blue' }: RangeSliderProps) {
   const [isDragging, setIsDragging] = useState<'min' | 'max' | null>(null);
 
   const getPercentage = (val: number) => ((val - min) / (max - min)) * 100;
@@ -127,75 +129,14 @@ function RangeSlider({ min, max, value, onChange, disabled = false, label, color
 export default function Settings() {
   const navigate = useNavigate();
   const { isMuted, volume, setMuted, setVolume, testSound } = useSound();
-  const [lengthSec, setLengthSec] = useState<30 | 60 | 120>(60);
-  const [ops, setOps] = useState<{ [k: string]: boolean }>({
-    addition: true,
-    subtraction: true,
-    multiplication: true,
-    division: true,
-    percent: true,
-  });
-  const [digits, setDigits] = useState<Record<string, { first: { min: number; max: number }; second: { min: number; max: number } }>>({
-    addition: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
-    subtraction: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
-    multiplication: { first: { min: 1, max: 1 }, second: { min: 1, max: 1 } },
-    division: { first: { min: 1, max: 1 }, second: { min: 1, max: 1 } },
-    percent: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
-  });
+  const [initial] = useState(loadSettings);
+  const [lengthSec, setLengthSec] = useState<SessionLength>(initial.lengthSec);
+  const [ops, setOps] = useState<OpsSettings>(initial.ops);
+  const [digits, setDigits] = useState<DigitSettings>(initial.digits);
   const [activeSection, setActiveSection] = useState<string>('gameplay');
 
-  useEffect(() => {
-    const loadSettings = () => {
-      try {
-        const saved = localStorage.getItem('ops');
-        if (saved) setOps(JSON.parse(saved));
-        const savedDigits = localStorage.getItem('digits');
-        if (savedDigits) {
-          const parsed = JSON.parse(savedDigits);
-          // Handle migration from old format to new format
-          if (parsed.addition && typeof parsed.addition === 'number') {
-            // Old format (single number) - convert to new format
-            const newDigits = {
-              addition: { first: { min: parsed.addition, max: parsed.addition }, second: { min: parsed.addition, max: parsed.addition } },
-              subtraction: { first: { min: parsed.subtraction, max: parsed.subtraction }, second: { min: parsed.subtraction, max: parsed.subtraction } },
-              multiplication: { first: { min: parsed.multiplication, max: parsed.multiplication }, second: { min: parsed.multiplication, max: parsed.multiplication } },
-              division: { first: { min: parsed.division, max: parsed.division }, second: { min: parsed.division, max: parsed.division } },
-              percent: { first: { min: parsed.percent, max: parsed.percent }, second: { min: parsed.percent, max: parsed.percent } },
-            };
-            setDigits(newDigits);
-          } else if (parsed.addition && typeof parsed.addition === 'object' && 'first' in parsed.addition && typeof parsed.addition.first === 'number') {
-            // Previous format (first/second numbers) - convert to range format
-            const newDigits = {
-              addition: { first: { min: parsed.addition.first, max: parsed.addition.first }, second: { min: parsed.addition.second, max: parsed.addition.second } },
-              subtraction: { first: { min: parsed.subtraction.first, max: parsed.subtraction.first }, second: { min: parsed.subtraction.second, max: parsed.subtraction.second } },
-              multiplication: { first: { min: parsed.multiplication.first, max: parsed.multiplication.first }, second: { min: parsed.multiplication.second, max: parsed.multiplication.second } },
-              division: { first: { min: parsed.division.first, max: parsed.division.first }, second: { min: parsed.division.second, max: parsed.division.second } },
-              percent: { first: { min: parsed.percent.first, max: parsed.percent.first }, second: { min: parsed.percent.second, max: parsed.percent.second } },
-            };
-            setDigits(newDigits);
-          } else {
-            setDigits(parsed);
-          }
-        }
-        const savedLength = localStorage.getItem('lengthSec');
-        if (savedLength) setLengthSec(Number(savedLength) as 30 | 60 | 120);
-      } catch (error) {
-        console.error('Error loading settings:', error);
-      }
-    };
-
-    loadSettings();
-  }, []);
-
-  const saveSettings = async () => {
-    try {
-      localStorage.setItem('lengthSec', String(lengthSec));
-      localStorage.setItem('ops', JSON.stringify(ops));
-      localStorage.setItem('digits', JSON.stringify(digits));
-      localStorage.setItem('lastSettings', JSON.stringify({ lengthSec, ops, digits }));
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
+  const handleSave = () => {
+    saveSettings({ lengthSec, ops, digits });
     navigate('/');
   };
 
@@ -290,7 +231,7 @@ export default function Settings() {
                 ].map(({ duration, label, desc, icon }) => (
                   <button
                     key={duration}
-                    onClick={() => setLengthSec(duration as 30 | 60 | 120)}
+                    onClick={() => setLengthSec(duration as SessionLength)}
                     className={`p-5 rounded-xl border-2 transition-all duration-200 text-left ${
                       lengthSec === duration
                         ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md'
@@ -505,7 +446,7 @@ export default function Settings() {
           transition={{ duration: 0.5, delay: 0.2 }}
         >
           <button
-            onClick={saveSettings}
+            onClick={handleSave}
             className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-3"
           >
             <Check size={20} />

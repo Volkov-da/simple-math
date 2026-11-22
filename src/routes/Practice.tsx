@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, CheckCircle, Target, Clock, Zap } from 'lucide-react';
@@ -7,424 +7,179 @@ import { getEncouragementMessage } from '../utils/encouragement';
 import { ConfettiBurst } from '../components/Confetti';
 import { TimerRing } from '../components/ProgressRing';
 import { shake, streakGlow } from '../utils/animations';
+import { enabledSkills, generateItem, isCorrectAnswer } from '../lib/problems';
+import { loadSettings, saveSession } from '../lib/storage';
+import type { Item, SessionSummary, SkillTotals } from '../lib/types';
 
-type Skill = 'addition' | 'subtraction' | 'multiplication' | 'division' | 'percent';
-
-type Difficulty = 'easy' | 'medium';
-
-type Item = {
-  id: string;
-  skill: Skill;
-  operator: '+' | '-' | '*' | '/' | '%';
-  operands: number[];
-  correctAnswer: string;
-  promptText: string;
+type Stats = {
+  attempted: number;
+  correct: number;
+  sumTimeMs: number;
+  currentStreak: number;
+  maxStreak: number;
+  perSkill: SessionSummary['perSkill'];
 };
 
-function randInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function gcd(a: number, b: number): number {
-  let x = Math.abs(a);
-  let y = Math.abs(b);
-  while (y !== 0) {
-    const t = y;
-    y = x % y;
-    x = t;
-  }
-  return x;
-}
-
-// Helper functions to check for trivial cases
-function isTrivialAddition(a: number, b: number): boolean {
-  return a === 0 || b === 0 || a === 1 || b === 1;
-}
-
-function isTrivialSubtraction(a: number, b: number): boolean {
-  return b === 0 || a === 0 || (a - b) === 1;
-}
-
-function isTrivialMultiplication(a: number, b: number): boolean {
-  return a === 0 || b === 0 || a === 1 || b === 1;
-}
-
-function isTrivialDivision(a: number, b: number): boolean {
-  return b === 1 || a === 0 || a === b || (a % b !== 0 && a < b);
-}
-
-function isTrivialPercent(x: number, y: number): boolean {
-  return x === 0 || y === 0 || x === 100 || y === 1;
-}
-
-function generateEasyItem(): Item {
-  const savedOpsRaw = localStorage.getItem('ops');
-  const enabled = savedOpsRaw ? (JSON.parse(savedOpsRaw) as Record<string, boolean>) : {
-    addition: true,
-    subtraction: true,
-    multiplication: true,
-    division: true,
-    percent: true,
-  };
-  const savedDigitsRaw = localStorage.getItem('digits');
-  let digits: Record<string, { first: { min: number; max: number }; second: { min: number; max: number } }>;
-  
-  if (savedDigitsRaw) {
-    const parsed = JSON.parse(savedDigitsRaw);
-    // Handle migration from old format to new format
-    if (parsed.addition && typeof parsed.addition === 'number') {
-      // Old format (single number) - convert to new format
-      digits = {
-        addition: { first: { min: parsed.addition, max: parsed.addition }, second: { min: parsed.addition, max: parsed.addition } },
-        subtraction: { first: { min: parsed.subtraction, max: parsed.subtraction }, second: { min: parsed.subtraction, max: parsed.subtraction } },
-        multiplication: { first: { min: parsed.multiplication, max: parsed.multiplication }, second: { min: parsed.multiplication, max: parsed.multiplication } },
-        division: { first: { min: parsed.division, max: parsed.division }, second: { min: parsed.division, max: parsed.division } },
-        percent: { first: { min: parsed.percent, max: parsed.percent }, second: { min: parsed.percent, max: parsed.percent } },
-      };
-    } else if (parsed.addition && typeof parsed.addition === 'object' && 'first' in parsed.addition && typeof parsed.addition.first === 'number') {
-      // Previous format (first/second numbers) - convert to range format
-      digits = {
-        addition: { first: { min: parsed.addition.first, max: parsed.addition.first }, second: { min: parsed.addition.second, max: parsed.addition.second } },
-        subtraction: { first: { min: parsed.subtraction.first, max: parsed.subtraction.first }, second: { min: parsed.subtraction.second, max: parsed.subtraction.second } },
-        multiplication: { first: { min: parsed.multiplication.first, max: parsed.multiplication.first }, second: { min: parsed.multiplication.second, max: parsed.multiplication.second } },
-        division: { first: { min: parsed.division.first, max: parsed.division.first }, second: { min: parsed.division.second, max: parsed.division.second } },
-        percent: { first: { min: parsed.percent.first, max: parsed.percent.first }, second: { min: parsed.percent.second, max: parsed.percent.second } },
-      };
-    } else {
-      digits = parsed;
-    }
-  } else {
-    digits = {
-      addition: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
-      subtraction: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
-      multiplication: { first: { min: 1, max: 1 }, second: { min: 1, max: 1 } },
-      division: { first: { min: 1, max: 1 }, second: { min: 1, max: 1 } },
-      percent: { first: { min: 2, max: 2 }, second: { min: 2, max: 2 } },
-    };
-  }
-  const pool: Skill[] = (['addition','subtraction','multiplication','division','percent'] as Skill[]).filter(s => enabled[s]);
-  const skillIndex = randInt(0, Math.max(0, pool.length - 1));
-  const skill: Skill = pool[skillIndex] ?? 'addition';
-  // Helper function to get random digit count within range
-  const getRandomDigits = (range: { min: number; max: number }) => {
-    const min = Math.max(1, Math.min(4, range.min));
-    const max = Math.max(1, Math.min(4, range.max));
-    return randInt(min, max);
-  };
-
-  const dAddFirst = getRandomDigits(digits['addition']?.first ?? { min: 2, max: 2 });
-  const dAddSecond = getRandomDigits(digits['addition']?.second ?? { min: 2, max: 2 });
-  const dSubFirst = getRandomDigits(digits['subtraction']?.first ?? { min: 2, max: 2 });
-  const dSubSecond = getRandomDigits(digits['subtraction']?.second ?? { min: 2, max: 2 });
-  const dMulFirst = getRandomDigits(digits['multiplication']?.first ?? { min: 1, max: 1 });
-  const dMulSecond = getRandomDigits(digits['multiplication']?.second ?? { min: 1, max: 1 });
-  const dDivFirst = getRandomDigits(digits['division']?.first ?? { min: 1, max: 1 });
-  const dDivSecond = getRandomDigits(digits['division']?.second ?? { min: 1, max: 1 });
-  const dPctFirst = getRandomDigits(digits['percent']?.first ?? { min: 2, max: 2 });
-  const dPctSecond = getRandomDigits(digits['percent']?.second ?? { min: 2, max: 2 });
-
-  const minForDigits = (d: number) => (d <= 1 ? 0 : Math.pow(10, d - 1));
-  const maxForDigits = (d: number) => (d <= 1 ? 9 : Math.pow(10, d) - 1);
-  if (skill === 'addition') {
-    let a, b;
-    let attempts = 0;
-    do {
-      a = randInt(minForDigits(dAddFirst), maxForDigits(dAddFirst));
-      b = randInt(minForDigits(dAddSecond), maxForDigits(dAddSecond));
-      attempts++;
-    } while (isTrivialAddition(a, b) && attempts < 20);
-    
-    return { id: crypto.randomUUID(), skill, operator: '+', operands: [a, b], correctAnswer: String(a + b), promptText: `${a} + ${b} = ?` };
-  }
-  if (skill === 'subtraction') {
-    let a, b;
-    let attempts = 0;
-    do {
-      a = randInt(minForDigits(dSubFirst), maxForDigits(dSubFirst));
-      b = randInt(minForDigits(dSubSecond), maxForDigits(dSubSecond));
-      if (b > a) [a, b] = [b, a];
-      attempts++;
-    } while (isTrivialSubtraction(a, b) && attempts < 20);
-    
-    return { id: crypto.randomUUID(), skill, operator: '-', operands: [a, b], correctAnswer: String(a - b), promptText: `${a} - ${b} = ?` };
-  }
-  if (skill === 'multiplication') {
-    let a, b;
-    let attempts = 0;
-    do {
-      a = randInt(minForDigits(dMulFirst), maxForDigits(dMulFirst));
-      b = randInt(minForDigits(dMulSecond), maxForDigits(dMulSecond));
-      attempts++;
-    } while (isTrivialMultiplication(a, b) && attempts < 20);
-    
-    return { id: crypto.randomUUID(), skill, operator: '*', operands: [a, b], correctAnswer: String(a * b), promptText: `${a} × ${b} = ?` };
-  }
-  if (skill === 'division') {
-    // choose divisor with dDivSecond digits; choose dividend with dDivFirst digits
-    const maxTries = 20;
-    let a = 0;
-    let b = 1;
-    let attempts = 0;
-    
-    for (let i = 0; i < maxTries; i++) {
-      b = randInt(Math.max(1, minForDigits(dDivSecond)), maxForDigits(dDivSecond));
-      const k = randInt(1, 9);
-      const candidate = b * k;
-      if (String(candidate).length <= String(maxForDigits(dDivFirst)).length || dDivFirst === 1) {
-        a = candidate;
-        if (!isTrivialDivision(a, b)) {
-          break;
-        }
-      }
-      a = candidate; // fallback uses last candidate even if digits differ
-      attempts++;
-    }
-    
-    // If we still have a trivial case after maxTries, try a few more attempts with different approach
-    if (isTrivialDivision(a, b) && attempts < 15) {
-      for (let i = 0; i < 5; i++) {
-        b = randInt(Math.max(2, minForDigits(dDivSecond)), maxForDigits(dDivSecond));
-        const k = randInt(2, 8);
-        a = b * k;
-        if (!isTrivialDivision(a, b)) {
-          break;
-        }
-      }
-    }
-    
-    return { id: crypto.randomUUID(), skill, operator: '/', operands: [a, b], correctAnswer: String(a / b), promptText: `${a} ÷ ${b} = ?` };
-  }
-  // percent-of (integer-only using user's rule, excluding 0% and 100%)
-  // Loop to find N and P where Step < 100 and P ∈ [Step, 100-Step]
-  let y = 0;
-  let x = 0;
-  let attempts = 0;
-  while (attempts < 100) {
-    attempts++;
-    const candidateY = randInt(Math.max(1, minForDigits(dPctSecond)), maxForDigits(dPctSecond));
-    const D = gcd(candidateY, 100);
-    const Step = 100 / D; // integer
-    if (Step >= 100) continue; // would force 100% only -> skip
-    const maxK = Math.floor(100 / Step); // equals D
-    if (maxK <= 1) continue; // no k in [1, maxK-1]
-    const k = randInt(1, maxK - 1); // ensures x != 0 and x != 100
-    y = candidateY;
-    x = Step * k;
-    
-    // Check if this percentage calculation is trivial
-    if (!isTrivialPercent(x, y)) {
-      break;
-    }
-  }
-  
-  // If we still have a trivial case, try a different approach
-  if (isTrivialPercent(x, y) && attempts < 50) {
-    for (let i = 0; i < 10; i++) {
-      y = randInt(Math.max(2, minForDigits(dPctSecond)), maxForDigits(dPctSecond));
-      x = randInt(10, 90); // Avoid 0%, 100%, and very simple percentages
-      if (!isTrivialPercent(x, y)) {
-        break;
-      }
-    }
-  }
-  
-  if (y === 0 || x === 0) {
-    // Fallback safe case
-    y = 200;
-    x = 50;
-  }
-  const ans = (x * y) / 100; // guaranteed integer
-  return {
-    id: crypto.randomUUID(),
-    skill: 'percent',
-    operator: '%',
-    operands: [x, y],
-    correctAnswer: String(ans),
-    promptText: `${x}% of ${y} = ?`,
-  };
-}
+const EMPTY_STATS: Stats = { attempted: 0, correct: 0, sumTimeMs: 0, currentStreak: 0, maxStreak: 0, perSkill: {} };
+const TICK_MS = 200;
 
 export default function Practice() {
   const navigate = useNavigate();
   const { playSound } = useSound();
-  const [lengthSec] = useState<number>(() => {
-    const saved = Number(localStorage.getItem('lengthSec'));
-    return saved === 30 || saved === 60 || saved === 120 ? saved : 60;
-  });
+  const [settings] = useState(loadSettings);
+  const { lengthSec, ops, digits } = settings;
+
   const [timeLeft, setTimeLeft] = useState<number>(lengthSec);
-  const [currentItem, setCurrentItem] = useState<Item>(() => generateEasyItem());
-  const [answer, setAnswer] = useState<string>('');
+  const [currentItem, setCurrentItem] = useState<Item>(() => generateItem(ops, digits));
+  const [answer, setAnswer] = useState('');
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [flash, setFlash] = useState<'correct' | 'incorrect' | null>(null);
-  const [encouragementMessage, setEncouragementMessage] = useState<string>('');
-  const [showConfetti, setShowConfetti] = useState<number>(0);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [lastCorrectAnswer, setLastCorrectAnswer] = useState<string>('');
+  const [encouragementMessage, setEncouragementMessage] = useState('');
+  const [showConfetti, setShowConfetti] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [lastCorrectAnswer, setLastCorrectAnswer] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const startedAt = useMemo(() => Date.now(), []);
 
-  const [attempted, setAttempted] = useState<number>(0);
-  const [correctCount, setCorrectCount] = useState<number>(0);
-  const [sumTimeMs, setSumTimeMs] = useState<number>(0);
-  const [currentStreak, setCurrentStreak] = useState<number>(0);
-  const [maxStreak, setMaxStreak] = useState<number>(0);
-  const lastSubmitAt = useRef<number>(Date.now());
-  const endedRef = useRef<boolean>(false);
-  const intervalIdRef = useRef<number | null>(null);
+  // Time is tracked with timestamps rather than by counting ticks, so the clock can't drift
+  // or stall. Pausing pushes the deadline (and the current problem's start time) forward.
+  const [startedAt] = useState(() => Date.now());
+  const deadlineRef = useRef(startedAt + lengthSec * 1000);
+  const pausedAtRef = useRef<number | null>(null);
+  const lastSubmitAt = useRef(startedAt);
+  const statsRef = useRef<Stats>(EMPTY_STATS);
+  const endedRef = useRef(false);
+  const feedbackTimeoutRef = useRef<number | null>(null);
 
-  const endSession = (reason: 'timeout' | 'exit') => {
-    if (endedRef.current) return;
-    endedRef.current = true;
-    if (intervalIdRef.current != null) {
-      clearInterval(intervalIdRef.current);
-      intervalIdRef.current = null;
-    }
-    const endedAt = Date.now();
-    const attemptedSafe = attempted;
-    const correctSafe = correctCount;
-    const avgTime = attemptedSafe > 0 ? sumTimeMs / attemptedSafe : 0;
-    const accuracy = attemptedSafe > 0 ? Math.round((correctSafe / attemptedSafe) * 100) : 0;
-    const summary = {
-      id: crypto.randomUUID(),
-      startedAt: new Date(startedAt).toISOString(),
-      endedAt: new Date(endedAt).toISOString(),
-      settings: { skills: ['addition','subtraction','multiplication','division','percent'], difficulty: 'easy', lengthSec: lengthSec as 30|60|120, seed: reason },
-      totals: { 
-        attempted: attemptedSafe, 
-        correct: correctSafe, 
-        accuracyPct: accuracy, 
-        avgTimeMs: avgTime,
-        maxStreak: maxStreak,
-        finalStreak: currentStreak
-      },
-      perSkill: {} as any,
-    };
-    
-    try {
-      // Save to localStorage
-      localStorage.setItem('lastSummary', JSON.stringify(summary));
-      const historyRaw = localStorage.getItem('summaries');
-      const history = historyRaw ? (JSON.parse(historyRaw) as any[]) : [];
-      const withNew = [summary, ...history];
-      const uniqueById: Record<string, any> = {};
-      for (const s of withNew) {
-        if (!uniqueById[s.id]) uniqueById[s.id] = s;
-      }
-      const deduped = Object.values(uniqueById).slice(0, 10);
-      localStorage.setItem('summaries', JSON.stringify(deduped));
-    } catch (error) {
-      console.error('Error saving session summary:', error);
-    }
-    
-    navigate(`/summary/${summary.id}`);
-  };
+  const endSession = useCallback(
+    (reason: 'timeout' | 'exit') => {
+      if (endedRef.current) return;
+      endedRef.current = true;
+      const s = statsRef.current;
+      const summary: SessionSummary = {
+        id: crypto.randomUUID(),
+        startedAt: new Date(startedAt).toISOString(),
+        endedAt: new Date().toISOString(),
+        settings: { skills: enabledSkills(settings.ops), lengthSec: settings.lengthSec, digits: settings.digits },
+        endReason: reason,
+        totals: {
+          attempted: s.attempted,
+          correct: s.correct,
+          accuracyPct: s.attempted > 0 ? Math.round((s.correct / s.attempted) * 100) : 0,
+          avgTimeMs: s.attempted > 0 ? s.sumTimeMs / s.attempted : 0,
+          maxStreak: s.maxStreak,
+          finalStreak: s.currentStreak,
+        },
+        perSkill: s.perSkill,
+      };
+      saveSession(summary);
+      navigate(`/summary/${summary.id}`);
+    },
+    [navigate, settings, startedAt],
+  );
 
   useEffect(() => {
+    if (isPaused) return;
     inputRef.current?.focus();
-    const iv = window.setInterval(() => {
-      if (!isPaused) {
-        setTimeLeft(t => {
-          if (t <= 1) {
-            window.clearInterval(iv);
-            if (endedRef.current) return 0;
-            endSession('timeout');
-          }
-          return t - 1;
-        });
-      }
-    }, 1000);
-    intervalIdRef.current = iv;
+    const tick = () => {
+      const remainingMs = deadlineRef.current - Date.now();
+      setTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+      if (remainingMs <= 0) endSession('timeout');
+    };
+    tick();
+    const iv = window.setInterval(tick, TICK_MS);
     return () => window.clearInterval(iv);
-  }, [attempted, correctCount, sumTimeMs, lengthSec, navigate, startedAt, isPaused]);
+  }, [isPaused, endSession]);
 
-  const togglePause = async () => {
+  useEffect(
+    () => () => {
+      if (feedbackTimeoutRef.current != null) window.clearTimeout(feedbackTimeoutRef.current);
+    },
+    [],
+  );
+
+  const togglePause = () => {
+    const now = Date.now();
+    if (isPaused) {
+      const pausedFor = now - (pausedAtRef.current ?? now);
+      deadlineRef.current += pausedFor;
+      lastSubmitAt.current += pausedFor;
+      pausedAtRef.current = null;
+    } else {
+      pausedAtRef.current = now;
+    }
     setIsPaused(!isPaused);
-    await playSound('click');
+    void playSound('click');
   };
 
-  async function submit() {
+  function submit(e?: FormEvent) {
+    e?.preventDefault();
+    // Ignore empty submissions so a stray Enter doesn't count as a wrong answer.
+    if (isPaused || endedRef.current || answer.trim() === '') return;
+
     const now = Date.now();
     const elapsed = now - lastSubmitAt.current;
     lastSubmitAt.current = now;
-    const isCorrect = answer.trim() === currentItem.correctAnswer;
-    
-    // Store the correct answer before moving to next task
-    setLastCorrectAnswer(currentItem.correctAnswer);
-    
-    setAttempted(a => a + 1);
-    
-    // Play sound effects
+    const isCorrect = isCorrectAnswer(answer, currentItem.correctAnswer);
+
+    const prev = statsRef.current;
+    const prevSkill: SkillTotals = prev.perSkill[currentItem.skill] ?? { attempted: 0, correct: 0, totalTimeMs: 0 };
+    const streak = isCorrect ? prev.currentStreak + 1 : 0;
+    const next: Stats = {
+      attempted: prev.attempted + 1,
+      correct: prev.correct + (isCorrect ? 1 : 0),
+      sumTimeMs: prev.sumTimeMs + elapsed,
+      currentStreak: streak,
+      maxStreak: Math.max(prev.maxStreak, streak),
+      perSkill: {
+        ...prev.perSkill,
+        [currentItem.skill]: {
+          attempted: prevSkill.attempted + 1,
+          correct: prevSkill.correct + (isCorrect ? 1 : 0),
+          totalTimeMs: prevSkill.totalTimeMs + elapsed,
+        },
+      },
+    };
+    statsRef.current = next;
+    setStats(next);
+
+    const prevAccuracy = prev.attempted > 0 ? (prev.correct / prev.attempted) * 100 : 0;
     if (isCorrect) {
-      await playSound('correct');
-    } else {
-      await playSound('incorrect');
-    }
-    
-    if (isCorrect) {
-      setCorrectCount(c => c + 1);
-      const newStreak = currentStreak + 1;
-      setCurrentStreak(newStreak);
-      setMaxStreak(m => Math.max(m, newStreak));
-      
-      // Show confetti for streaks of 3, 5, 10+
-      if (newStreak === 3 || newStreak === 5 || newStreak === 10 || newStreak % 10 === 0) {
-        setShowConfetti(prev => prev + 1);
-        await playSound('streak');
+      void playSound('correct');
+      if (streak === 3 || streak === 5 || streak % 10 === 0) {
+        setShowConfetti(n => n + 1);
+        void playSound('streak');
       }
-      
-      // Get encouragement message
-      const message = getEncouragementMessage('correct', {
-        streak: newStreak,
-        accuracy: attempted > 0 ? (correctCount / attempted) * 100 : 0,
-        isFirstCorrect: attempted === 1,
-        isPersonalBest: newStreak > maxStreak
-      });
-      setEncouragementMessage(message);
+      setEncouragementMessage(
+        getEncouragementMessage('correct', {
+          streak,
+          accuracy: prevAccuracy,
+          isFirstCorrect: next.correct === 1,
+          isPersonalBest: streak > prev.maxStreak,
+        }),
+      );
     } else {
-      setCurrentStreak(0);
-      const message = getEncouragementMessage('incorrect', {
-        streak: currentStreak,
-        accuracy: attempted > 0 ? (correctCount / attempted) * 100 : 0
-      });
-      setEncouragementMessage(message);
+      void playSound('incorrect');
+      setEncouragementMessage(getEncouragementMessage('incorrect', { streak: prev.currentStreak, accuracy: prevAccuracy }));
     }
-    
-    setSumTimeMs(ms => ms + elapsed);
+
+    setLastCorrectAnswer(currentItem.correctAnswer);
     setFlash(isCorrect ? 'correct' : 'incorrect');
-    
-    // Show next task immediately
-    const showNextTask = () => {
-      setAnswer('');
-      setCurrentItem(generateEasyItem());
-      inputRef.current?.focus();
-    };
-    
-    // Clear feedback messages after delay
-    const clearFeedback = () => {
-      setFlash(null);
-      setEncouragementMessage('');
-    };
-    
-    // Show next task immediately
-    showNextTask();
-    
-    // Clear feedback after appropriate delay
-    if (isCorrect) {
-      setTimeout(clearFeedback, 1500);
-    } else {
-      setTimeout(clearFeedback, 2000);
-    }
+    setAnswer('');
+    setCurrentItem(generateItem(ops, digits));
+    inputRef.current?.focus();
+
+    // Restart the feedback timer so an earlier answer's timeout can't clear newer feedback.
+    if (feedbackTimeoutRef.current != null) window.clearTimeout(feedbackTimeoutRef.current);
+    feedbackTimeoutRef.current = window.setTimeout(
+      () => {
+        setFlash(null);
+        setEncouragementMessage('');
+      },
+      isCorrect ? 1500 : 2000,
+    );
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        submit();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [answer, currentItem]);
+  const { attempted, correct: correctCount, sumTimeMs, currentStreak } = stats;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
@@ -547,12 +302,12 @@ export default function Practice() {
             </motion.div>
 
             {/* Answer Input and Submit Button Container */}
-            <div className="flex flex-col items-center space-y-6">
+            <form onSubmit={submit} className="flex flex-col items-center space-y-6">
               {/* Answer Input */}
               <motion.input
                 ref={inputRef}
                 value={answer}
-                onChange={e => setAnswer(e.target.value.replace(/[^0-9\-\.]/g, ''))}
+                onChange={e => setAnswer(e.target.value.replace(/[^0-9.-]/g, ''))}
                 inputMode="decimal"
                 className="text-4xl font-mono text-center w-80 py-4 px-6 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
                 placeholder="?"
@@ -562,7 +317,7 @@ export default function Practice() {
 
               {/* Submit Button */}
               <motion.button
-                onClick={submit}
+                type="submit"
                 className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -570,7 +325,7 @@ export default function Practice() {
               >
                 Submit (Enter)
               </motion.button>
-            </div>
+            </form>
 
           </motion.div>
         </motion.div>
