@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { soundManager } from '../utils/sounds';
 
 interface SoundContextType {
@@ -58,6 +58,7 @@ export function SoundProvider({ children }: SoundProviderProps) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- the hook belongs with its provider
 export function useSound() {
   const context = useContext(SoundContext);
   if (context === undefined) {

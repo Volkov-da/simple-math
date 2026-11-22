@@ -1,29 +1,13 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, BarChart3, Target, Trophy, Clock, Zap, Calendar } from 'lucide-react';
-import { AnimatedCounter, StatCard } from '../components/AnimatedCounter';
+import { ArrowLeft, Target, Trophy, Clock, Zap, Calendar } from 'lucide-react';
+import { StatCard } from '../components/AnimatedCounter';
+import { loadSessions } from '../lib/storage';
+import type { SessionSummary } from '../lib/types';
 
-interface SessionSummary {
-  id: string;
-  startedAt: string;
-  endedAt: string;
-  settings: {
-    skills: string[];
-    difficulty: string;
-    lengthSec: 30 | 60 | 120;
-    seed: string;
-  };
-  totals: {
-    attempted: number;
-    correct: number;
-    accuracyPct: number;
-    avgTimeMs: number;
-    maxStreak: number;
-    finalStreak: number;
-  };
-  perSkill: any;
-}
+/** How many sessions to list on the page; the stats themselves use the full history. */
+const RECENT_LIST_LIMIT = 20;
 
 export default function Statistics() {
   const [recentSessions, setRecentSessions] = useState<SessionSummary[]>([]);
@@ -42,8 +26,7 @@ export default function Statistics() {
   useEffect(() => {
     const loadData = () => {
       try {
-        // Load recent sessions from localStorage
-        const localSessions = JSON.parse(localStorage.getItem('summaries') || '[]');
+        const localSessions = loadSessions();
         setRecentSessions(localSessions);
 
         // Calculate overall statistics
@@ -59,9 +42,12 @@ export default function Statistics() {
             .filter((streak: number) => typeof streak === 'number' && !isNaN(streak) && streak >= 0);
           const bestStreak = validStreaks.length > 0 ? Math.max(...validStreaks) : 0;
           
-          const averageTimePerTask = localSessions.length > 0 
-            ? localSessions.reduce((sum: number, s: SessionSummary) => sum + (s.totals.avgTimeMs || 0), 0) / localSessions.length 
-            : 0;
+          // Weighted by problems attempted, so a 3-problem session doesn't count as much as a 60-problem one.
+          const totalTimeMs = localSessions.reduce(
+            (sum: number, s: SessionSummary) => sum + (s.totals.avgTimeMs || 0) * (s.totals.attempted || 0),
+            0,
+          );
+          const averageTimePerTask = totalAttempted > 0 ? totalTimeMs / totalAttempted : 0;
 
           // Calculate improvement trend (compare last 3 sessions to previous 3)
           let improvementTrend = 0;
@@ -200,7 +186,7 @@ export default function Statistics() {
             >
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Sessions</h3>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {recentSessions.map((session, index) => (
+                {recentSessions.slice(0, RECENT_LIST_LIMIT).map((session, index) => (
                   <motion.div
                     key={session.id}
                     className={`p-4 rounded-lg border ${
@@ -208,7 +194,7 @@ export default function Statistics() {
                     }`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.5 + index * 0.1 }}
+                    transition={{ duration: 0.3, delay: 0.5 + Math.min(index, 10) * 0.05 }}
                   >
                     <div className="flex justify-between items-center">
                       <div>
